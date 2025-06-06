@@ -1,0 +1,12 @@
+fastapi==0.109.2
+uvicorn==0.27.1
+python-multipart==0.0.9
+openai==1.12.0
+anthropic==0.18.1
+scenedetect==0.6.3
+moviepy==1.0.3
+ffmpeg-python==0.2.0
+python-dotenv==1.0.1
+openai-whisper==20231117
+numpy==1.26.4
+torch==2.2.1 
