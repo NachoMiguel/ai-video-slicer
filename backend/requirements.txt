@@ -14,4 +14,9 @@ pytube==15.0.0
 beautifulsoup4==4.12.3
 requests==2.31.0
 google-api-python-client==2.112.0
-Pillow==10.2.0 
+Pillow==10.2.0
+opencv-python==4.9.0.80
+face-recognition==1.3.0
+dlib==19.24.1
+moviepy==1.0.3
+Pillow==10.0.1 
