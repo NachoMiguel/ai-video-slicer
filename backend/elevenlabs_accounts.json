@@ -1,0 +1,60 @@
+{
+    "accounts": [
+      {
+        "id": 1,
+        "email": "solohypechannel@gmail.com",
+        "signup_date": "2024-03-20",
+        "credits_used": 0,
+        "credits_remaining": 10000,
+        "last_used": null
+      },
+      {
+        "id": 2,
+        "email": "ignacio.miguel.a@gmail.com",
+        "signup_date": "2024-03-20",
+        "credits_used": 0,
+        "credits_remaining": 10000,
+        "last_used": null
+      },
+      {
+        "id": 3,
+        "email": "ignaciostiktok@gmail.com",
+        "signup_date": "2024-03-20",
+        "credits_used": 0,
+        "credits_remaining": 10000,
+        "last_used": null
+      },
+      {
+        "id": 4,
+        "email": "nmtiktokshop@gmail.com",
+        "signup_date": "2024-03-20",
+        "credits_used": 0,
+        "credits_remaining": 10000,
+        "last_used": null
+      },
+      {
+        "id": 5,
+        "email": "aimerged1@gmail.com",
+        "signup_date": "2024-03-20",
+        "credits_used": 0,
+        "credits_remaining": 10000,
+        "last_used": null
+      },
+      {
+        "id": 6,
+        "email": "aimerged2@gmail.com",
+        "signup_date": "2024-03-20",
+        "credits_used": 0,
+        "credits_remaining": 10000,
+        "last_used": null
+      },
+      {
+        "id": 7,
+        "email": "itsnacho.tiktok@gmail.com",
+        "signup_date": "2024-03-20",
+        "credits_used": 0,
+        "credits_remaining": 10000,
+        "last_used": null
+      }
+    ]
+  }
