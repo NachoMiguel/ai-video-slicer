@@ -83,7 +83,7 @@
 
 @layer components {
   .panel {
-    @apply bg-white rounded-lg shadow-sm border border-gray-100 p-6;
+    @apply bg-card text-card-foreground rounded-lg shadow-sm border p-6;
   }
   
   .btn-primary {

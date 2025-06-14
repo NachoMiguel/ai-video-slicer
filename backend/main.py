@@ -40,7 +40,11 @@ from backend.elevenlabs_account_manager import (
     update_accounts_usage_from_dict
 )
 
-load_dotenv()
+# Load environment variables from backend/.env file
+env_path = os.path.join(os.path.dirname(__file__), '.env')
+load_dotenv(env_path)
+print(f"[ENV] Loading environment from: {env_path}")
+print(f"[ENV] File exists: {os.path.exists(env_path)}")
 
 # Configure logging with Unicode support
 logging.basicConfig(
@@ -186,9 +190,101 @@ app.add_middleware(
 
 # Configure OpenAI
 try:
-    client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY", "test-key"))
+    api_key = os.getenv("OPENAI_API_KEY")
+    print(f"[DEBUG] API key found: {bool(api_key)}")
+    print(f"[DEBUG] API key length: {len(api_key) if api_key else 0}")
+    
+    if not api_key or api_key == "test-key":
+        print("Warning: OPENAI_API_KEY not found in environment variables")
+        client = None
+    else:
+        print("[DEBUG] Attempting to initialize OpenAI client...")
+        print(f"[DEBUG] OpenAI version: {openai.__version__}")
+        
+        # Check for proxy-related environment variables and clear them temporarily
+        proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'OPENAI_PROXY']
+        original_proxy_values = {}
+        for var in proxy_vars:
+            value = os.getenv(var)
+            if value:
+                print(f"[DEBUG] Found proxy env var {var}: {value}")
+                original_proxy_values[var] = value
+                # Temporarily remove proxy env vars
+                os.environ.pop(var, None)
+                print(f"[DEBUG] Temporarily removed {var}")
+        
+        if not original_proxy_values:
+            print("[DEBUG] No proxy environment variables found")
+        
+        # Try to initialize with minimal parameters
+        from openai import OpenAI
+        print("[DEBUG] About to call OpenAI constructor...")
+        
+        # Try basic initialization after clearing proxy env vars
+        try:
+            client = OpenAI(api_key=api_key)
+        except TypeError as e:
+            if "proxies" in str(e):
+                print("[DEBUG] Proxies error persists, using workaround...")
+                # Create a simple wrapper that works around the issue
+                
+                class WorkaroundOpenAIClient:
+                    def __init__(self, api_key):
+                        self.api_key = api_key
+                        self.base_url = "https://api.openai.com/v1"
+                        self.chat = self
+                        self.completions = self
+                    
+                    def create(self, **kwargs):
+                        # Make direct HTTP request to OpenAI API
+                        headers = {
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json"
+                        }
+                        
+                        # Convert parameters to API format
+                        data = {
+                            "model": kwargs.get("model", "gpt-4"),
+                            "messages": kwargs.get("messages", []),
+                            "temperature": kwargs.get("temperature", 0.7)
+                        }
+                        
+                        response = requests.post(
+                            f"{self.base_url}/chat/completions",
+                            headers=headers,
+                            json=data,
+                            timeout=60.0
+                        )
+                        
+                        if response.status_code != 200:
+                            raise Exception(f"OpenAI API error: {response.status_code} - {response.text}")
+                        
+                        result = response.json()
+                        
+                        # Create a simple response object that mimics OpenAI's response
+                        class SimpleResponse:
+                            def __init__(self, data):
+                                self.choices = [SimpleChoice(data['choices'][0])]
+                        
+                        class SimpleChoice:
+                            def __init__(self, choice_data):
+                                self.message = SimpleMessage(choice_data['message'])
+                        
+                        class SimpleMessage:
+                            def __init__(self, message_data):
+                                self.content = message_data['content']
+                        
+                        return SimpleResponse(result)
+                
+                client = WorkaroundOpenAIClient(api_key)
+                print("[SUCCESS] Using workaround OpenAI client")
+            else:
+                raise e
+        print("[SUCCESS] OpenAI client initialized successfully")
 except Exception as e:
     print(f"Warning: Could not initialize OpenAI client: {e}")
+    print(f"[DEBUG] Exception type: {type(e)}")
+    print(f"[DEBUG] Exception args: {e.args}")
     client = None
 
 # Configure Google Custom Search API
@@ -382,15 +478,15 @@ def load_prompt_from_file(prompt_type: str = "default") -> str:
         with open(prompt_file, 'r', encoding='utf-8') as f:
             content = f.read()
             
-        # Extract the prompt from the markdown file
+        # Simplified extraction logic
         if prompt_type == "default":
             # Look for the Default Script Generation Prompt section
             start_marker = "## Default Script Generation Prompt"
             end_marker = "## Scene Analysis Prompt"
         else:
-            # Look for the Scene Analysis Prompt section
+            # Look for the Scene Analysis Prompt section  
             start_marker = "## Scene Analysis Prompt"
-            end_marker = "```"  # End at the closing code block
+            end_marker = "## Additional Prompts"
             
         start_idx = content.find(start_marker)
         if start_idx == -1:
@@ -398,48 +494,52 @@ def load_prompt_from_file(prompt_type: str = "default") -> str:
             
         # Find the end of the section
         end_idx = content.find(end_marker, start_idx + len(start_marker))
-        if end_idx == -1 and prompt_type != "default":
+        if end_idx == -1:
             end_idx = len(content)  # Use end of file if no end marker found
             
         # Extract the section content
-        if prompt_type == "default":
-            section_content = content[start_idx:end_idx] if end_idx != -1 else content[start_idx:]
-        else:
-            section_content = content[start_idx:end_idx]
+        section_content = content[start_idx:end_idx]
             
-        # Clean up the content - remove markdown formatting and extract just the text
+        # Extract text between code blocks (```)
         lines = section_content.split('\n')
         prompt_lines = []
-        in_prompt = False
+        in_code_block = False
         
         for line in lines:
-            line = line.strip()
-            if line.startswith('##'):
-                continue  # Skip section headers
-            if line == '```' and not in_prompt:
-                in_prompt = True
+            stripped_line = line.strip()
+            
+            # Skip section headers
+            if stripped_line.startswith('##'):
                 continue
-            if line == '```' and in_prompt:
-                break
-            if in_prompt or (prompt_type == "default" and line and not line.startswith('#')):
-                prompt_lines.append(line)
+                
+            # Toggle code block state
+            if stripped_line == '```':
+                in_code_block = not in_code_block
+                continue
+                
+            # Collect lines inside code blocks
+            if in_code_block and stripped_line:
+                prompt_lines.append(stripped_line)
                 
         prompt_text = '\n'.join(prompt_lines).strip()
         
         if not prompt_text:
             raise ValueError("Empty prompt extracted")
             
+        print(f"[SUCCESS] Loaded {prompt_type} prompt: {len(prompt_text)} characters")
         return prompt_text
         
     except Exception as e:
-        print(f"Error loading {prompt_type} prompt: {e}")
+        print(f"[WARNING] Error loading {prompt_type} prompt: {e}")
         # Fallback to default prompts if file reading fails
         if prompt_type == "default":
-            return """
-You are a professional video editor. Based on the provided video transcript, create a compelling narrative script that would work well for editing and recomposing video content. Focus on creating a cohesive story structure with clear emotional beats and engaging transitions.
-"""
+            fallback_prompt = "You are a professional video editor. Based on the provided video transcript, create a compelling narrative script that would work well for editing and recomposing video content. Focus on creating a cohesive story structure with clear emotional beats and engaging transitions."
+            print(f"[SUCCESS] Using fallback default prompt: {len(fallback_prompt)} characters")
+            return fallback_prompt
         else:
-            return "You are a video editor creating a script for recomposing video scenes. Analyze the available scenes and create a narrative that flows naturally while maintaining visual coherence."
+            fallback_prompt = "You are a video editor creating a script for recomposing video scenes. Analyze the available scenes and create a narrative that flows naturally while maintaining visual coherence."
+            print(f"[SUCCESS] Using fallback scene prompt: {len(fallback_prompt)} characters")
+            return fallback_prompt
 
 # Load prompts from file
 DEFAULT_PROMPT = load_prompt_from_file("default")
@@ -2939,17 +3039,31 @@ async def generate_script_from_youtube(
             transcript = result["text"]
             
             # Generate script using OpenAI
+            if client is None:
+                raise HTTPException(status_code=500, detail="OpenAI client not available. Please check your API key.")
+            
             prompt = DEFAULT_PROMPT if use_default_prompt else custom_prompt
             if not prompt:
                 raise HTTPException(status_code=400, detail="No prompt provided")
             
-            response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": f"Video Title: {yt.title}\n\nTranscript:\n{transcript}"}
-                ]
-            )
+            print(f"[AI] Using prompt: {prompt[:100]}...")
+            print(f"[TRANSCRIPT] Length: {len(transcript)} characters")
+            print(f"[DEBUG] About to call OpenAI API...")
+            print(f"[DEBUG] Client type: {type(client)}")
+            
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": f"Video Title: {yt.title}\n\nTranscript:\n{transcript}"}
+                    ]
+                )
+                print(f"[DEBUG] OpenAI API call successful")
+            except Exception as api_error:
+                print(f"[ERROR] OpenAI API call failed: {api_error}")
+                print(f"[ERROR] Error type: {type(api_error)}")
+                raise api_error
             
             script = response.choices[0].message.content
             
