@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+  "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+  "dev:frontend": "next dev",
+  "dev:backend": "uvicorn backend.main:app --reload",
+  "build": "next build",
+  "start": "next start",
+  "lint": "next lint"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",
@@ -29,6 +31,7 @@
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^9.1.2",
     "eslint": "^8.56.0",
     "eslint-config-next": "14.1.0",
     "postcss": "^8.5.4",
