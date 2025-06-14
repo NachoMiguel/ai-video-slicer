@@ -1,0 +1,43 @@
+2025-06-14 14:07:02,591 - main - INFO -    Results: {'result_type': 'dict'}
+2025-06-14 14:07:02,604 - main - ERROR -    Traceback: Traceback (most recent call last):
+  File "C:\Users\ASUS\Desktop\ai-video-slicer\backend\main.py", line 133, in safe_execute_phase
+    result = phase_function(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\Desktop\ai-video-slicer\test_error_handling.py", line 28, in test_function_failure
+    raise ValueError("This is a test error")
+ValueError: This is a test error
+
+2025-06-14 14:07:04,623 - main - ERROR -    Traceback: Traceback (most recent call last):
+  File "C:\Users\ASUS\Desktop\ai-video-slicer\backend\main.py", line 138, in safe_execute_phase
+    raise PhaseTimeoutError(phase_name, timeout_seconds)
+main.PhaseTimeoutError: Phase Test Timeout Phase: Phase timed out after 1 seconds
+
+2025-06-14 14:07:04,670 - main - INFO -    segments_count: 5
+2025-06-14 14:07:04,670 - main - INFO -    transitions_count: 4
+2025-06-14 14:07:04,670 - main - INFO -    total_duration: 120.5
+2025-06-14 14:07:04,670 - main - INFO -    quality_score: 0.85
+2025-06-14 14:31:23,054 - main - INFO - 🚀 Starting Test Success Phase
+2025-06-14 14:31:23,054 - main - INFO - ✅ Test Success Phase completed successfully
+2025-06-14 14:31:23,054 - main - INFO -    Results: {'result_type': 'dict'}
+2025-06-14 14:31:23,055 - main - INFO - 🚀 Starting Test Failure Phase
+2025-06-14 14:31:23,055 - main - ERROR - ❌ Test Failure Phase failed: This is a test error
+2025-06-14 14:31:23,055 - main - ERROR -    Traceback: Traceback (most recent call last):
+  File "C:\Users\ASUS\Desktop\ai-video-slicer\backend\main.py", line 142, in safe_execute_phase
+    result = phase_function(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\Desktop\ai-video-slicer\test_error_handling.py", line 28, in test_function_failure
+    raise ValueError("This is a test error")
+ValueError: This is a test error
+
+2025-06-14 14:31:23,056 - main - INFO - 🚀 Starting Test Timeout Phase
+2025-06-14 14:31:25,058 - main - ERROR - ❌ Test Timeout Phase failed: Phase Test Timeout Phase: Phase timed out after 1 seconds
+2025-06-14 14:31:25,058 - main - ERROR -    Traceback: Traceback (most recent call last):
+  File "C:\Users\ASUS\Desktop\ai-video-slicer\backend\main.py", line 147, in safe_execute_phase
+    raise PhaseTimeoutError(phase_name, timeout_seconds)
+main.PhaseTimeoutError: Phase Test Timeout Phase: Phase timed out after 1 seconds
+
+2025-06-14 14:31:25,058 - main - INFO - 📊 Assembly Statistics (test):
+2025-06-14 14:31:25,058 - main - INFO -    segments_count: 5
+2025-06-14 14:31:25,058 - main - INFO -    transitions_count: 4
+2025-06-14 14:31:25,058 - main - INFO -    total_duration: 120.5
+2025-06-14 14:31:25,058 - main - INFO -    quality_score: 0.85

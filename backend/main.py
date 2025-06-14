@@ -3,11 +3,14 @@ import tempfile
 import json
 import uuid
 import asyncio
+import logging
+import datetime
+import traceback
 from typing import List, Dict
 from fastapi import FastAPI, UploadFile, File, Form, WebSocket, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from scenedetect import detect, ContentDetector
-from moviepy.editor import VideoFileClip, concatenate_videoclips, TextClip, CompositeVideoClip
+from moviepy.editor import VideoFileClip, concatenate_videoclips, TextClip, CompositeVideoClip, AudioFileClip
 import openai
 import whisper
 from dotenv import load_dotenv
@@ -28,10 +31,149 @@ from googleapiclient.discovery import build
 from PIL import Image
 import io
 import random
+from backend.elevenlabs_account_manager import (
+    ElevenLabsAccountManager,
+    chunk_script_into_paragraphs,
+    synthesize_chunks_with_account_switching,
+    verify_full_script_coverage,
+    concatenate_audio_files,
+    update_accounts_usage_from_dict
+)
 
 load_dotenv()
 
+# Configure logging with Unicode support
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('ai_video_slicer.log', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Advanced Assembly Configuration
+ADVANCED_ASSEMBLY_CONFIG = {
+    'character_extraction': {
+        'use_openai': True,
+        'fallback_enabled': True,
+        'min_character_length': 3
+    },
+    'face_recognition': {
+        'similarity_threshold': 0.6,
+        'min_quality': 0.3,
+        'min_encodings': 2
+    },
+    'scene_analysis': {
+        'frames_per_scene': 3,
+        'min_scene_duration': 0.1,
+        'max_scene_duration': 120.0
+    },
+    'assembly': {
+        'transition_type': 'fade',
+        'enhance_quality': True,
+        'max_resolution_height': 1080
+    },
+    'timeouts': {
+        'phase_a_timeout': 120,  # 2 minutes
+        'phase_b_timeout': 300,  # 5 minutes
+        'phase_c_timeout': 60,   # 1 minute
+        'phase_d_timeout': 600   # 10 minutes
+    }
+}
+
 app = FastAPI()
+
+# Custom Exception Classes
+class AdvancedAssemblyError(Exception):
+    """Custom exception for advanced assembly errors"""
+    def __init__(self, phase: str, message: str, original_error: Exception = None):
+        self.phase = phase
+        self.message = message
+        self.original_error = original_error
+        self.timestamp = datetime.datetime.now().isoformat()
+        super().__init__(f"Phase {phase}: {message}")
+
+class PhaseTimeoutError(AdvancedAssemblyError):
+    """Exception for phase timeout errors"""
+    def __init__(self, phase: str, timeout_seconds: int):
+        super().__init__(phase, f"Phase timed out after {timeout_seconds} seconds")
+
+# Error Handling Utilities
+def log_phase_start(phase_name: str, **kwargs):
+    """Log the start of a processing phase"""
+    try:
+        logger.info(f"🚀 Starting {phase_name}")
+    except UnicodeEncodeError:
+        logger.info(f"[START] {phase_name}")
+    if kwargs:
+        logger.info(f"   Parameters: {kwargs}")
+
+def log_phase_success(phase_name: str, **kwargs):
+    """Log successful completion of a processing phase"""
+    try:
+        logger.info(f"✅ {phase_name} completed successfully")
+    except UnicodeEncodeError:
+        logger.info(f"[SUCCESS] {phase_name} completed successfully")
+    if kwargs:
+        logger.info(f"   Results: {kwargs}")
+
+def log_phase_error(phase_name: str, error: Exception, **kwargs):
+    """Log phase error with full context"""
+    try:
+        logger.error(f"❌ {phase_name} failed: {str(error)}")
+    except UnicodeEncodeError:
+        logger.error(f"[ERROR] {phase_name} failed: {str(error)}")
+    if kwargs:
+        logger.error(f"   Context: {kwargs}")
+    logger.error(f"   Traceback: {traceback.format_exc()}")
+
+def safe_execute_phase(phase_name: str, phase_function, timeout_seconds: int = None, **kwargs):
+    """Safely execute a phase with consistent error handling and optional timeout"""
+    try:
+        log_phase_start(phase_name, **kwargs)
+        
+        if timeout_seconds:
+            # Note: For simplicity, we'll implement basic timeout tracking
+            # In production, you might want to use asyncio.wait_for for async functions
+            start_time = datetime.datetime.now()
+        
+        result = phase_function(**kwargs)
+        
+        if timeout_seconds:
+            elapsed = (datetime.datetime.now() - start_time).total_seconds()
+            if elapsed > timeout_seconds:
+                raise PhaseTimeoutError(phase_name, timeout_seconds)
+        
+        log_phase_success(phase_name, result_type=type(result).__name__)
+        return result
+        
+    except Exception as e:
+        log_phase_error(phase_name, e, **kwargs)
+        if isinstance(e, AdvancedAssemblyError):
+            raise e
+        else:
+            raise AdvancedAssemblyError(phase_name, str(e), e)
+
+def create_error_metadata(error: Exception, phase: str = "unknown") -> Dict:
+    """Create standardized error metadata"""
+    return {
+        "error_type": type(error).__name__,
+        "error_message": str(error),
+        "phase": phase,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "traceback": traceback.format_exc() if logger.level <= logging.DEBUG else None
+    }
+
+def log_assembly_stats(stats: Dict, assembly_type: str):
+    """Log assembly statistics for monitoring"""
+    try:
+        logger.info(f"📊 Assembly Statistics ({assembly_type}):")
+    except UnicodeEncodeError:
+        logger.info(f"[STATS] Assembly Statistics ({assembly_type}):")
+    for key, value in stats.items():
+        logger.info(f"   {key}: {value}")
 
 # Configure CORS
 app.add_middleware(
@@ -2561,12 +2703,13 @@ def get_transition_parameters(effect: str) -> Dict:
     return parameters.get(effect, {})
 
 def assemble_final_video(segments: Dict[str, Dict], transitions: List[Dict], output_path: str, 
-                        enhance_quality: bool = True) -> Dict[str, any]:
+                        enhance_quality: bool = True, audio_file: str = None) -> Dict[str, any]:
     """
     D3: Assemble final video with intelligent editing and quality enhancement.
+    If audio_file is provided, use it as the audio track for the final video.
     """
     try:
-        from moviepy.editor import VideoFileClip, concatenate_videoclips
+        from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip
         import os
         
         print(f"🎬 Assembling final video: {output_path}")
@@ -2603,6 +2746,12 @@ def assemble_final_video(segments: Dict[str, Dict], transitions: List[Dict], out
         print("🔗 Concatenating video segments...")
         final_video = concatenate_videoclips(video_clips, method="compose")
         
+        # If audio_file is provided, set it as the audio track
+        if audio_file and os.path.exists(audio_file):
+            print(f"🔊 Adding custom audio track: {audio_file}")
+            final_audio = AudioFileClip(audio_file)
+            final_video = final_video.set_audio(final_audio)
+        
         # Final video properties
         total_duration = final_video.duration
         resolution = final_video.size
@@ -2623,6 +2772,8 @@ def assemble_final_video(segments: Dict[str, Dict], transitions: List[Dict], out
         for clip in video_clips:
             clip.close()
         final_video.close()
+        if audio_file and os.path.exists(audio_file):
+            final_audio.close()
         
         # Calculate final quality metrics
         assembly_quality = calculate_assembly_quality(successful_segments, total_duration)
@@ -2802,6 +2953,31 @@ async def generate_script_from_youtube(
             
             script = response.choices[0].message.content
             
+            # Step 3: Chunk the script into paragraphs
+            script_chunks = chunk_script_into_paragraphs(script)
+            
+            # Step 4: Synthesize each chunk with account switching
+            voice_id = os.getenv('ELEVENLABS_DEFAULT_VOICE_ID', 'Rn9Yq7uum9irZ6RwppDN')
+            tts_output_dir = os.path.join(temp_dir, 'tts_chunks')
+            audio_files, chunk_account_map, account_usage = synthesize_chunks_with_account_switching(
+                script_chunks, voice_id, tts_output_dir, account_manager
+            )
+
+            # Step 5: Verify all chunks have audio
+            all_audio_ok, missing_indices = verify_full_script_coverage(audio_files)
+            if not all_audio_ok:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to synthesize audio for chunks: {missing_indices}"
+                )
+
+            # Step 6: Concatenate all audio files into one
+            final_audio_path = os.path.join(temp_dir, 'final_voiceover.mp3')
+            concatenate_audio_files(audio_files, final_audio_path)
+
+            # Step 7: Update account usage in JSON
+            update_accounts_usage_from_dict(account_manager, account_usage)
+
             return {
                 "status": "success",
                 "script": script,
@@ -2818,92 +2994,488 @@ async def generate_script_from_youtube(
 @app.post("/api/process")
 async def process_videos(
     videos: List[UploadFile] = File(...),
-    prompt: str = Form(...)
+    prompt: str = Form(...),
+    use_advanced_assembly: bool = Form(True)
 ):
+    """
+    Main video processing endpoint with advanced assembly and robust error handling
+    """
+    processing_start_time = datetime.datetime.now()
+    request_id = str(uuid.uuid4())[:8]
+    
     try:
+        logger.info(f"🎬 Starting video processing request {request_id}")
+    except UnicodeEncodeError:
+        logger.info(f"[PROCESS] Starting video processing request {request_id}")
+    logger.info(f"   Videos: {len(videos)} files")
+    logger.info(f"   Advanced Assembly: {use_advanced_assembly}")
+    logger.info(f"   Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"   Prompt: {prompt}")
+    
+    try:
+        # Initialize account manager with error handling
+        try:
+            account_manager = ElevenLabsAccountManager()
+            try:
+                logger.info("✅ ElevenLabs account manager initialized")
+            except UnicodeEncodeError:
+                logger.info("[SUCCESS] ElevenLabs account manager initialized")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize ElevenLabs account manager: {e}")
+            raise HTTPException(status_code=500, detail="TTS service initialization failed")
+        
         # Validate file sizes
         for video in videos:
             if video.size > MAX_FILE_SIZE:
+                logger.error(f"❌ File {video.filename} too large: {video.size} bytes")
                 raise HTTPException(
                     status_code=400,
                     detail=f"File {video.filename} is too large. Maximum size is 100MB."
                 )
+        logger.info("✅ File size validation passed")
 
         # Create temporary directory for processing
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Save uploaded videos
-            video_paths = []
-            for video in videos:
-                temp_path = os.path.join(temp_dir, video.filename)
-                with open(temp_path, "wb") as f:
-                    f.write(await video.read())
-                video_paths.append(temp_path)
-
-            # Detect scenes in each video
-            scenes = []
-            for video_path in video_paths:
-                scene_list = detect(video_path, ContentDetector())
-                scenes.extend([(video_path, scene) for scene in scene_list])
-
-            # Generate script using OpenAI
-            script = generate_script(prompt, scenes)
-            if not script:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Failed to generate script"
-                )
-
-            # Process videos
-            output_path = os.path.join(temp_dir, "output.mp4")
+            logger.info(f"📁 Created temporary directory: {temp_dir}")
             
+            # Save uploaded videos with error handling
+            video_paths = []
             try:
-                # Load and process videos
-                clips = []
-                for path in video_paths:
-                    clip = VideoFileClip(path)
-                    # Resize to 1080p if needed
-                    if clip.h > 1080:
-                        clip = clip.resize(height=1080)
-                    clips.append(clip)
+                for video in videos:
+                    temp_path = os.path.join(temp_dir, video.filename)
+                    with open(temp_path, "wb") as f:
+                        f.write(await video.read())
+                    video_paths.append(temp_path)
+                    logger.info(f"💾 Saved video: {video.filename}")
+            except Exception as e:
+                logger.error(f"❌ Failed to save videos: {e}")
+                raise HTTPException(status_code=500, detail="Failed to save uploaded videos")
 
-                # Concatenate videos
-                final_clip = concatenate_videoclips(clips)
-                final_clip.write_videofile(
-                    output_path,
-                    codec='libx264',
-                    audio_codec='aac',
-                    temp_audiofile=os.path.join(temp_dir, 'temp-audio.m4a'),
-                    remove_temp=True
+            # Scene detection with error handling
+            scenes = []
+            try:
+                for video_path in video_paths:
+                    scene_list = detect(video_path, ContentDetector())
+                    scenes.extend([(video_path, scene) for scene in scene_list])
+                    logger.info(f"🎬 Detected {len(scene_list)} scenes in {os.path.basename(video_path)}")
+                logger.info(f"✅ Total scenes detected: {len(scenes)}")
+            except Exception as e:
+                logger.error(f"❌ Scene detection failed: {e}")
+                raise HTTPException(status_code=500, detail="Scene detection failed")
+
+            # Generate script using OpenAI with error handling
+            try:
+                script = safe_execute_phase(
+                    "Script Generation",
+                    generate_script,
+                    timeout_seconds=ADVANCED_ASSEMBLY_CONFIG['timeouts']['phase_a_timeout'],
+                    prompt=prompt,
+                    scenes=scenes
+                )
+                if not script:
+                    raise AdvancedAssemblyError("Script Generation", "Empty script generated")
+                logger.info(f"✅ Generated script: {len(script)} characters")
+            except Exception as e:
+                logger.error(f"❌ Script generation failed: {e}")
+                raise HTTPException(status_code=500, detail="Failed to generate script")
+
+            # Initialize variables for advanced assembly
+            characters = {}
+            face_registry = {}
+            video_scene_matches = {}
+            script_scenes = {}
+            assembly_plan = []
+            assembly_type = "simple"
+            phase_errors = []
+            
+            # ADVANCED ASSEMBLY PHASES
+            if use_advanced_assembly:
+                try:
+                    # PHASE A: Character Extraction and Face Registry
+                    try:
+                        characters = safe_execute_phase(
+                            "Phase A - Character Extraction",
+                            extract_characters_with_age_context,
+                            timeout_seconds=ADVANCED_ASSEMBLY_CONFIG['timeouts']['phase_a_timeout'],
+                            script=script
+                        )
+                        
+                        if not characters:
+                            logger.warning("⚠️ Primary character extraction failed, trying fallback")
+                            characters = safe_execute_phase(
+                                "Phase A - Character Extraction (Fallback)",
+                                extract_characters_fallback,
+                                script=script
+                            )
+                        
+                        if characters:
+                            logger.info(f"✅ Extracted {len(characters)} characters: {list(characters.keys())}")
+                            
+                            # Create face registry
+                            face_registry = safe_execute_phase(
+                                "Phase A - Face Registry Creation",
+                                create_project_face_registry,
+                                characters=characters,
+                                temp_dir=temp_dir
+                            )
+                            
+                            face_registry = safe_execute_phase(
+                                "Phase A - Face Registry Validation",
+                                validate_face_registry_quality,
+                                face_registry=face_registry,
+                                min_quality=ADVANCED_ASSEMBLY_CONFIG['face_recognition']['min_quality'],
+                                min_encodings=ADVANCED_ASSEMBLY_CONFIG['face_recognition']['min_encodings']
+                            )
+                            
+                            logger.info(f"✅ Face registry created with {len(face_registry)} entities")
+                        else:
+                            raise AdvancedAssemblyError("Phase A", "No characters could be extracted")
+                            
+                    except Exception as e:
+                        phase_errors.append(create_error_metadata(e, "Phase A"))
+                        raise AdvancedAssemblyError("Phase A", f"Character extraction failed: {str(e)}", e)
+
+                    # PHASE B: Advanced Scene Analysis
+                    if characters and face_registry:
+                        try:
+                            scene_frames = {}
+                            scene_face_data = {}
+                            
+                            for video_path in video_paths:
+                                # Convert basic scenes to timestamps
+                                video_scenes = [s for s in scenes if s[0] == video_path]
+                                scene_timestamps = [(s[1][0].get_seconds(), s[1][1].get_seconds()) 
+                                                  for s in video_scenes]
+                                
+                                if scene_timestamps:
+                                    # Extract frames and detect faces
+                                    frames = safe_execute_phase(
+                                        f"Phase B - Frame Extraction ({os.path.basename(video_path)})",
+                                        extract_scene_frames,
+                                        timeout_seconds=ADVANCED_ASSEMBLY_CONFIG['timeouts']['phase_b_timeout'],
+                                        video_path=video_path,
+                                        scene_timestamps=scene_timestamps,
+                                        frames_per_scene=ADVANCED_ASSEMBLY_CONFIG['scene_analysis']['frames_per_scene']
+                                    )
+                                    
+                                    faces = safe_execute_phase(
+                                        f"Phase B - Face Detection ({os.path.basename(video_path)})",
+                                        detect_faces_in_scene_frames,
+                                        scene_frames=frames
+                                    )
+                                    
+                                    matches = safe_execute_phase(
+                                        f"Phase B - Face Matching ({os.path.basename(video_path)})",
+                                        match_faces_to_entities,
+                                        scene_face_data=faces,
+                                        face_registry=face_registry,
+                                        similarity_threshold=ADVANCED_ASSEMBLY_CONFIG['face_recognition']['similarity_threshold']
+                                    )
+                                    
+                                    scene_frames[video_path] = frames
+                                    scene_face_data[video_path] = faces
+                                    video_scene_matches.update(matches)
+                            
+                            logger.info(f"✅ Phase B completed: {len(video_scene_matches)} scene matches")
+                            
+                        except Exception as e:
+                            phase_errors.append(create_error_metadata(e, "Phase B"))
+                            raise AdvancedAssemblyError("Phase B", f"Scene analysis failed: {str(e)}", e)
+
+                    # PHASE C: Script-to-Scene Intelligence
+                    if video_scene_matches:
+                        try:
+                            script_scenes = safe_execute_phase(
+                                "Phase C - Script Scene Analysis",
+                                analyze_script_scenes,
+                                timeout_seconds=ADVANCED_ASSEMBLY_CONFIG['timeouts']['phase_c_timeout'],
+                                script_content=script
+                            )
+                            
+                            script_to_video_mapping = safe_execute_phase(
+                                "Phase C - Script-to-Video Mapping",
+                                map_script_to_video_scenes,
+                                script_scenes=script_scenes,
+                                video_scene_matches=video_scene_matches,
+                                face_registry=face_registry
+                            )
+                            
+                            recommendations = safe_execute_phase(
+                                "Phase C - Scene Recommendations",
+                                generate_scene_recommendations,
+                                script_to_video_mapping=script_to_video_mapping
+                            )
+                            
+                            assembly_plan = recommendations.get('assembly_plan', [])
+                            
+                            # Quality check
+                            quality_assessment = recommendations.get('quality_assessment', {})
+                            feasibility = quality_assessment.get('assembly_feasibility', 'unknown')
+                            
+                            logger.info(f"✅ Phase C completed: {len(assembly_plan)} assembly segments")
+                            logger.info(f"   Assembly feasibility: {feasibility}")
+                            
+                            if feasibility in ['difficult'] and len(assembly_plan) < 2:
+                                logger.warning(f"⚠️ Assembly feasibility is {feasibility}, falling back to simple assembly")
+                                use_advanced_assembly = False
+                                assembly_plan = []
+                            else:
+                                assembly_type = "advanced"
+                                
+                        except Exception as e:
+                            phase_errors.append(create_error_metadata(e, "Phase C"))
+                            raise AdvancedAssemblyError("Phase C", f"Script intelligence failed: {str(e)}", e)
+                    else:
+                        logger.warning("⚠️ No video scene matches found, falling back to simple assembly")
+                        use_advanced_assembly = False
+                        
+                except AdvancedAssemblyError as e:
+                    logger.error(f"❌ Advanced assembly failed at {e.phase}: {e.message}")
+                    phase_errors.append(create_error_metadata(e, e.phase))
+                    use_advanced_assembly = False
+                    assembly_type = "simple_fallback"
+                except Exception as e:
+                    logger.error(f"❌ Unexpected error in advanced assembly: {e}")
+                    phase_errors.append(create_error_metadata(e, "Advanced Assembly"))
+                    use_advanced_assembly = False
+                    assembly_type = "simple_fallback"
+
+            # TTS PIPELINE with error handling
+            try:
+                logger.info("🎤 Starting TTS Pipeline")
+                
+                # Step 3: Chunk the script into paragraphs
+                script_chunks = safe_execute_phase(
+                    "TTS - Script Chunking",
+                    chunk_script_into_paragraphs,
+                    script=script
+                )
+                logger.info(f"✅ Script chunked into {len(script_chunks)} paragraphs")
+
+                # Step 4: Synthesize each chunk with account switching
+                voice_id = os.getenv('ELEVENLABS_DEFAULT_VOICE_ID', 'Rn9Yq7uum9irZ6RwppDN')
+                tts_output_dir = os.path.join(temp_dir, 'tts_chunks')
+                
+                audio_files, chunk_account_map, account_usage = safe_execute_phase(
+                    "TTS - Audio Synthesis",
+                    synthesize_chunks_with_account_switching,
+                    script_chunks=script_chunks,
+                    voice_id=voice_id,
+                    output_dir=tts_output_dir,
+                    account_manager=account_manager
+                )
+                logger.info(f"✅ Synthesized {len(audio_files)} audio chunks")
+
+                # Step 5: Verify all chunks have audio
+                all_audio_ok, missing_indices = safe_execute_phase(
+                    "TTS - Audio Verification",
+                    verify_full_script_coverage,
+                    audio_files=audio_files
+                )
+                
+                if not all_audio_ok:
+                    raise AdvancedAssemblyError("TTS", f"Failed to synthesize audio for chunks: {missing_indices}")
+
+                # Step 6: Concatenate all audio files into one
+                final_audio_path = os.path.join(temp_dir, 'final_voiceover.mp3')
+                safe_execute_phase(
+                    "TTS - Audio Concatenation",
+                    concatenate_audio_files,
+                    audio_files=audio_files,
+                    output_path=final_audio_path
                 )
 
-                # Clean up clips
-                for clip in clips:
-                    clip.close()
-                final_clip.close()
+                # Step 7: Update account usage in JSON
+                safe_execute_phase(
+                    "TTS - Account Usage Update",
+                    update_accounts_usage_from_dict,
+                    account_manager=account_manager,
+                    account_usage=account_usage
+                )
+                
+                logger.info("✅ TTS Pipeline completed successfully")
+                
+            except Exception as e:
+                logger.error(f"❌ TTS Pipeline failed: {e}")
+                raise HTTPException(status_code=500, detail=f"TTS processing failed: {str(e)}")
 
-                # Read the output file
+            # VIDEO ASSEMBLY PHASE
+            output_path = os.path.join(temp_dir, "output.mp4")
+            metadata = {}
+            assembly_stats = {}
+            
+            if use_advanced_assembly and assembly_plan:
+                try:
+                    logger.info("🚀 Starting Phase D: Intelligent Video Assembly")
+                    
+                    # D1: Extract video segments based on assembly plan
+                    segments = safe_execute_phase(
+                        "Phase D - Video Segment Extraction",
+                        extract_video_segments,
+                        timeout_seconds=ADVANCED_ASSEMBLY_CONFIG['timeouts']['phase_d_timeout'],
+                        video_path=video_paths[0],  # Use first video for now
+                        assembly_plan=assembly_plan,
+                        output_dir=temp_dir
+                    )
+                    
+                    # D2: Create intelligent transitions
+                    transitions = safe_execute_phase(
+                        "Phase D - Transition Creation",
+                        create_scene_transitions,
+                        segments=segments,
+                        transition_type=ADVANCED_ASSEMBLY_CONFIG['assembly']['transition_type']
+                    )
+                    
+                    # D3: Assemble final video with enhancements
+                    assembly_result = safe_execute_phase(
+                        "Phase D - Final Video Assembly",
+                        assemble_final_video,
+                        segments=segments,
+                        transitions=transitions,
+                        output_path=output_path,
+                        enhance_quality=ADVANCED_ASSEMBLY_CONFIG['assembly']['enhance_quality'],
+                        audio_file=final_audio_path
+                    )
+                    
+                    # D4: Generate comprehensive metadata
+                    metadata = safe_execute_phase(
+                        "Phase D - Metadata Generation",
+                        generate_video_metadata,
+                        assembly_result=assembly_result,
+                        assembly_plan=assembly_plan,
+                        script_scenes=script_scenes,
+                        recommendations=recommendations if 'recommendations' in locals() else {}
+                    )
+                    
+                    assembly_stats = {
+                        "segments_count": len(segments),
+                        "transitions_count": len(transitions),
+                        "total_duration": assembly_result.get('total_duration', 0),
+                        "quality_score": assembly_result.get('quality_score', 0)
+                    }
+                    
+                    logger.info("✅ Phase D: Intelligent Video Assembly completed")
+                    log_assembly_stats(assembly_stats, "advanced")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Phase D failed: {e}")
+                    phase_errors.append(create_error_metadata(e, "Phase D"))
+                    logger.info("🔄 Falling back to simple assembly")
+                    use_advanced_assembly = False
+                    assembly_type = "simple_fallback"
+
+            # SIMPLE ASSEMBLY (fallback or default)
+            if not use_advanced_assembly:
+                try:
+                    logger.info("🔧 Starting Simple Video Assembly")
+                    
+                    # Create simple segments from all videos
+                    segments = {}
+                    for i, video_path in enumerate(video_paths):
+                        segments[f'segment_{i}'] = {
+                            'video_path': video_path,
+                            'start_time': 0,
+                            'duration': VideoFileClip(video_path).duration,
+                            'type': 'simple'
+                        }
+                    
+                    # Simple concatenation
+                    clips = []
+                    for segment_data in segments.values():
+                        clip = VideoFileClip(segment_data['video_path'])
+                        clips.append(clip)
+                    
+                    # Add audio if available
+                    if os.path.exists(final_audio_path):
+                        audio_clip = AudioFileClip(final_audio_path)
+                        final_clip = concatenate_videoclips(clips)
+                        final_clip = final_clip.set_audio(audio_clip)
+                    else:
+                        final_clip = concatenate_videoclips(clips)
+                    
+                    final_clip.write_videofile(output_path, codec='libx264', audio_codec='aac')
+                    final_clip.close()
+                    
+                    # Clean up clips
+                    for clip in clips:
+                        clip.close()
+                    
+                    assembly_stats = {
+                        "segments_count": len(segments),
+                        "total_duration": sum(s['duration'] for s in segments.values()),
+                        "assembly_method": "simple"
+                    }
+                    
+                    metadata = {
+                        "assembly_type": assembly_type,
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "stats": assembly_stats
+                    }
+                    
+                    logger.info("✅ Simple Video Assembly completed")
+                    log_assembly_stats(assembly_stats, "simple")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Simple assembly failed: {e}")
+                    raise HTTPException(status_code=500, detail=f"Video assembly failed: {str(e)}")
+
+            # FINAL PROCESSING
+            try:
+                # Read the final video file
                 with open(output_path, "rb") as f:
-                    output_data = f.read()
-
+                    video_data = f.read()
+                
+                # Calculate processing time
+                processing_time = (datetime.datetime.now() - processing_start_time).total_seconds()
+                
+                # Final metadata
+                final_metadata = {
+                    **metadata,
+                    "request_id": request_id,
+                    "processing_time_seconds": processing_time,
+                    "assembly_type": assembly_type,
+                    "video_count": len(videos),
+                    "script_length": len(script),
+                    "phase_errors": phase_errors if phase_errors else None
+                }
+                
+                try:
+                    logger.info(f"🎉 Video processing completed successfully in {processing_time:.2f}s")
+                except UnicodeEncodeError:
+                    logger.info(f"[COMPLETE] Video processing completed successfully in {processing_time:.2f}s")
+                logger.info(f"   Assembly type: {assembly_type}")
+                logger.info(f"   Final video size: {len(video_data)} bytes")
+                
                 return {
                     "status": "success",
-                    "message": "Video processing completed",
                     "script": script,
-                    "data": output_data
+                    "video_data": video_data,
+                    "assembly_type": assembly_type,
+                    "metadata": final_metadata,
+                    "stats": assembly_stats
                 }
-
+                
             except Exception as e:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Error processing video: {str(e)}"
-                )
+                logger.error(f"❌ Final processing failed: {e}")
+                raise HTTPException(status_code=500, detail="Failed to read final video")
 
-    except HTTPException as he:
-        raise he
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
+        # Log unexpected errors
+        processing_time = (datetime.datetime.now() - processing_start_time).total_seconds()
+        logger.error(f"💥 Unexpected error in video processing (request {request_id}): {e}")
+        logger.error(f"   Processing time before error: {processing_time:.2f}s")
+        logger.error(f"   Traceback: {traceback.format_exc()}")
+        
         raise HTTPException(
             status_code=500,
-            detail=f"An unexpected error occurred: {str(e)}"
+            detail={
+                "error": "Internal server error during video processing",
+                "request_id": request_id,
+                "processing_time": processing_time,
+                "error_details": str(e) if logger.level <= logging.DEBUG else "Enable debug logging for details"
+            }
         )
 
 def generate_script(prompt: str, scenes: List[tuple]) -> str:

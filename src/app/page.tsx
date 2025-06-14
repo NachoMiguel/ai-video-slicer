@@ -20,7 +20,11 @@ export default function Home() {
   const [result, setResult] = useState<{
     script: string;
     videoUrl: string;
+    assemblyType?: string;
+    metadata?: any;
+    stats?: any;
   } | null>(null)
+  const [useAdvancedAssembly, setUseAdvancedAssembly] = useState(true)
 
   const handleFilesAccepted = (files: File[]) => {
     setVideos(files)
@@ -42,6 +46,7 @@ export default function Home() {
       videos.forEach(video => formData.append('videos', video))
       formData.append('prompt', prompt)
       formData.append('use_base_prompt', String(prompt === 'Use base prompt'))
+      formData.append('use_advanced_assembly', String(useAdvancedAssembly))
 
       const response = await fetch('http://127.0.0.1:8000/api/process', {
         method: 'POST',
@@ -61,7 +66,10 @@ export default function Home() {
       
       setResult({
         script: data.script,
-        videoUrl
+        videoUrl,
+        assemblyType: data.assembly_type,
+        metadata: data.metadata,
+        stats: data.stats
       })
     } catch (error) {
       console.error('Error:', error)
@@ -164,13 +172,37 @@ export default function Home() {
                         ))}
 
                         {videos.length >= 2 && (
-                          <Button
-                            className="w-full mt-6 h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
-                            disabled={isProcessing}
-                            onClick={() => handleGenerate(generatedScript || '')}
-                          >
-                            Generate Edited Video
-                          </Button>
+                          <div className="mt-6 space-y-4">
+                            <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50/80 border border-slate-200/50">
+                              <div>
+                                <h4 className="font-semibold text-slate-800">Assembly Mode</h4>
+                                <p className="text-sm text-slate-500">
+                                  {useAdvancedAssembly 
+                                    ? "AI-powered intelligent scene matching and assembly" 
+                                    : "Simple video concatenation"}
+                                </p>
+                              </div>
+                              <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={useAdvancedAssembly}
+                                  onChange={(e) => setUseAdvancedAssembly(e.target.checked)}
+                                  className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                <span className="ml-3 text-sm font-medium text-slate-700">
+                                  {useAdvancedAssembly ? 'Advanced' : 'Simple'}
+                                </span>
+                              </label>
+                            </div>
+                            <Button
+                              className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+                              disabled={isProcessing}
+                              onClick={() => handleGenerate(generatedScript || '')}
+                            >
+                              Generate Edited Video
+                            </Button>
+                          </div>
                         )}
                       </div>
                     )}
@@ -203,12 +235,34 @@ export default function Home() {
             <Card className="border border-border shadow-lg bg-card">
               <CardHeader className="pb-4">
                 <CardTitle className="text-2xl font-semibold text-card-foreground">Video Preview</CardTitle>
+                {result.assemblyType && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                      result.assemblyType === 'advanced' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {result.assemblyType === 'advanced' ? '🤖 Advanced Assembly' : '🔧 Simple Assembly'}
+                    </span>
+                  </div>
+                )}
               </CardHeader>
               <CardContent>
                 <VideoPreview
                   videoUrl={result.videoUrl}
                   onDownload={handleDownloadVideo}
                 />
+                {result.stats && result.assemblyType === 'advanced' && (
+                  <div className="mt-4 p-4 rounded-xl bg-slate-50/80 border border-slate-200/50">
+                    <h4 className="font-semibold text-slate-800 mb-2">Assembly Statistics</h4>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>Characters Found: <span className="font-medium">{result.stats.characters_found}</span></div>
+                      <div>Face Registry: <span className="font-medium">{result.stats.face_registry_entities}</span></div>
+                      <div>Video Scenes: <span className="font-medium">{result.stats.video_scenes_matched}</span></div>
+                      <div>Assembly Plan: <span className="font-medium">{result.stats.assembly_plan_length}</span></div>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
