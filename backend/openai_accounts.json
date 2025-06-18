@@ -1,0 +1,35 @@
+{
+    "last_account_index": 0,
+    "accounts": [
+        {
+            "id": 1,
+            "email": "ignacio.miguel.a@gmail.com",
+            "tokens_used": 0,
+            "last_used": null
+        },
+        {
+            "id": 2,
+            "email": "nmtiktokshop@gmail.com",
+            "tokens_used": 0,
+            "last_used": null
+        },
+        {
+            "id": 3,
+            "email": "ignacioustiktok@gmail.com",
+            "tokens_used": 0,
+            "last_used": null
+        },
+        {
+            "id": 4,
+            "email": "florencia.skripczuk@gmail.com",
+            "tokens_used": 0,
+            "last_used": null
+        },
+        {
+            "id": 5,
+            "email": "aimerged1@gmail.com",
+            "tokens_used": 0,
+            "last_used": null
+        }
+    ]
+}

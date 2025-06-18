@@ -118,18 +118,46 @@ def synthesize_chunks_with_account_switching(chunks, voice_id, output_dir, accou
                 account_usage[account_id] = account_usage.get(account_id, 0) + len(chunk)
                 success = True
             else:
-                # Check for credit/limit error (status 402 or specific error message)
+                # Parse error details
                 try:
                     error_json = response.json()
                     error_message = error_json.get('detail', '').lower()
+                    error_text = str(error_json)
                 except Exception:
                     error_message = ''
-                if response.status_code == 402 or 'insufficient' in error_message or 'credit' in error_message:
-                    print(f'[WARNING] Credit error for account {account_id} on chunk {idx+1}, switching account.')
+                    error_text = response.text
+                
+                # Categorize errors for account switching
+                should_switch_account = False
+                error_reason = ""
+                
+                if response.status_code in [401, 403]:
+                    should_switch_account = True
+                    error_reason = "Authentication/Authorization error (invalid API key)"
+                elif response.status_code == 402 or 'insufficient' in error_message or 'credit' in error_message:
+                    should_switch_account = True
+                    error_reason = "Credit/Payment error"
+                elif response.status_code == 429:
+                    should_switch_account = True
+                    error_reason = "Rate limit error"
+                elif response.status_code in [500, 502, 503]:
+                    should_switch_account = True
+                    error_reason = "Server error (temporary)"
+                elif response.status_code == 400:
+                    should_switch_account = False
+                    error_reason = "Bad request (likely voice ID or request format issue)"
+                else:
+                    should_switch_account = True
+                    error_reason = f"Unexpected error ({response.status_code})"
+                
+                if should_switch_account:
+                    print(f'[WARNING] {error_reason} for account {account_id} on chunk {idx+1}, switching account.')
+                    print(f'[DEBUG] Error details: {response.status_code} - {error_text[:200]}...')
                     account_manager.last_account_index = (account_id) % account_manager.total_accounts
                     attempts += 1
                 else:
-                    print(f'[ERROR] Synthesis failed for chunk {idx+1}: {response.status_code} {response.text}')
+                    print(f'[ERROR] {error_reason} for chunk {idx+1}, stopping attempts.')
+                    print(f'[ERROR] Full error: {response.status_code} {error_text}')
                     break
         if not success:
             print(f'[ERROR] Failed to synthesize chunk {idx+1} after trying all accounts.')
