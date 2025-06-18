@@ -7,7 +7,6 @@ import { ArrowLeft, Play, Save, Download } from 'lucide-react';
 // Entry components
 import { EntryMethodSelector } from './entry/EntryMethodSelector';
 import { YouTubeInputPanel } from './entry/YouTubeInputPanel';
-import { ScriptUploadPanel } from './entry/ScriptUploadPanel';
 
 // Interactive components
 import { ChatInterface } from './interactive/ChatInterface';
@@ -27,9 +26,8 @@ export interface ChatMessage {
 
 export interface ScriptSession {
   id: string;
-  entryMethod: 'youtube' | 'upload' | null;
+  entryMethod: 'youtube' | null;
   sourceUrl?: string;
-  sourceFileName?: string;
   currentScript: string;
   bulletPoints: string[];
   messages: ChatMessage[];
@@ -48,7 +46,7 @@ interface ScriptBuilderProps {
 }
 
 export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuilderProps) {
-  const [currentStep, setCurrentStep] = useState<'entry' | 'youtube' | 'upload' | 'building'>('entry');
+  const [currentStep, setCurrentStep] = useState<'entry' | 'youtube' | 'building'>('entry');
   const [session, setSession] = useState<ScriptSession>({
     id: '',
     entryMethod: null,
@@ -72,7 +70,7 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
   const initializeSession = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/script/initialize', {
+      const response = await fetch('http://127.0.0.1:8000/api/script/initialize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -80,7 +78,7 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
       if (!response.ok) throw new Error('Failed to initialize session');
       
       const data = await response.json();
-      setSession(prev => ({ ...prev, id: data.sessionId }));
+      setSession(prev => ({ ...prev, id: data.session_id }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to initialize session');
     } finally {
@@ -88,18 +86,18 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
     }
   };
 
-  const handleMethodSelected = async (method: 'youtube' | 'upload') => {
+  const handleMethodSelected = async (method: 'youtube') => {
     try {
       setIsLoading(true);
       setError(null);
       
-      const response = await fetch('/api/script/set-entry-method', {
+      const formData = new FormData();
+      formData.append('session_id', session.id);
+      formData.append('entry_method', method);
+      
+      const response = await fetch('http://127.0.0.1:8000/api/script/set-entry-method', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: session.id,
-          entryMethod: method
-        })
+        body: formData
       });
       
       if (!response.ok) throw new Error('Failed to set entry method');
@@ -118,13 +116,14 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
       setIsLoading(true);
       setError(null);
       
-      const response = await fetch('/api/script/youtube/extract', {
+      const formData = new FormData();
+      formData.append('session_id', session.id);
+      formData.append('youtube_url', url);
+      formData.append('use_default_prompt', 'true');
+      
+      const response = await fetch('http://127.0.0.1:8000/api/script/youtube/extract', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: session.id,
-          youtubeUrl: url
-        })
+        body: formData
       });
       
       if (!response.ok) throw new Error('Failed to extract YouTube content');
@@ -141,7 +140,7 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
       const systemMessage: ChatMessage = {
         id: Date.now().toString(),
         type: 'system',
-        content: `Successfully extracted content from YouTube video. Generated ${data.bulletPoints?.length || 0} bullet points for script development.`,
+        content: `Successfully extracted content from YouTube video: ${data.video_title}. Transcript length: ${data.transcript_length} characters.`,
         timestamp: new Date()
       };
       
@@ -158,114 +157,68 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
     }
   };
 
-  const handleScriptUpload = async (content: string, fileName: string) => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      
-      const response = await fetch('/api/script/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: session.id,
-          content,
-          fileName
-        })
-      });
-      
-      if (!response.ok) throw new Error('Failed to analyze uploaded script');
-      
-      const data = await response.json();
-      setSession(prev => ({
-        ...prev,
-        sourceFileName: fileName,
-        currentScript: content,
-        wordCount: content.split(/\s+/).filter(word => word.length > 0).length,
-        analysis: data.analysis
-      }));
-      
-      // Add system message
-      const systemMessage: ChatMessage = {
-        id: Date.now().toString(),
-        type: 'system',
-        content: `Successfully analyzed uploaded script "${fileName}". Ready for interactive refinement and optimization.`,
-        timestamp: new Date()
-      };
-      
-      setSession(prev => ({
-        ...prev,
-        messages: [systemMessage]
-      }));
-      
-      setCurrentStep('building');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to analyze uploaded script');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleSendMessage = async (message: string) => {
+    if (!message.trim() || isLoading) return;
+
+    // Add user message immediately
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      type: 'user',
+      content: message,
+      timestamp: new Date(),
+      status: 'sending'
+    };
+
+    setSession(prev => ({
+      ...prev,
+      messages: [...prev.messages, userMessage]
+    }));
+
     try {
       setIsLoading(true);
       setError(null);
-      
-      // Add user message immediately
-      const userMessage: ChatMessage = {
-        id: Date.now().toString(),
-        type: 'user',
-        content: message,
-        timestamp: new Date(),
-        command: message.startsWith('/') ? message.split(' ')[0] : undefined,
-        status: 'sending'
-      };
-      
-      setSession(prev => ({
-        ...prev,
-        messages: [...prev.messages, userMessage]
-      }));
-      
-      const response = await fetch('/api/script/chat', {
+
+      const formData = new FormData();
+      formData.append('session_id', session.id);
+      formData.append('message', message);
+      formData.append('message_type', 'user');
+
+      const response = await fetch('http://127.0.0.1:8000/api/script/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: session.id,
-          message
-        })
+        body: formData
       });
-      
+
       if (!response.ok) throw new Error('Failed to send message');
-      
+
       const data = await response.json();
-      
-      // Update user message status and add assistant response
-      const assistantMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        type: 'assistant',
-        content: data.response,
-        timestamp: new Date(),
-        status: 'sent'
-      };
-      
+
+      // Update messages with response
       setSession(prev => ({
         ...prev,
-        messages: prev.messages.map(msg => 
-          msg.id === userMessage.id 
-            ? { ...msg, status: 'sent' as const }
-            : msg
-        ).concat(assistantMessage),
-        currentScript: data.updatedScript || prev.currentScript,
+        messages: prev.messages.map(msg => {
+          if (msg.id === userMessage.id) {
+            return { ...msg, status: 'sent' as const };
+          }
+          return msg;
+        }).concat([{
+          id: (Date.now() + 1).toString(),
+          type: 'assistant' as const,
+          content: data.response || 'Response received',
+          timestamp: new Date()
+        }]),
+        currentScript: data.currentScript || prev.currentScript,
         wordCount: data.wordCount || prev.wordCount,
-        sectionsCompleted: data.sectionsCompleted || prev.sectionsCompleted
+        bulletPoints: data.bulletPoints || prev.bulletPoints
       }));
-      
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message');
-      // Update last user message status to error
+      
+      // Mark user message as error
       setSession(prev => ({
         ...prev,
-        messages: prev.messages.map((msg, index) => {
-          if (index === prev.messages.length - 1 && msg.type === 'user') {
+        messages: prev.messages.map(msg => {
+          if (msg.id === userMessage.id) {
             return { ...msg, status: 'error' as const };
           }
           return msg;
@@ -281,12 +234,12 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
       setIsLoading(true);
       setError(null);
       
-      const response = await fetch('/api/script/finalize', {
+      const formData = new FormData();
+      formData.append('session_id', session.id);
+      
+      const response = await fetch('http://127.0.0.1:8000/api/script/finalize', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: session.id
-        })
+        body: formData
       });
       
       if (!response.ok) throw new Error('Failed to finalize script');
@@ -307,7 +260,7 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
   const handleBack = () => {
     if (currentStep === 'building') {
       setCurrentStep('entry');
-    } else if (currentStep === 'youtube' || currentStep === 'upload') {
+    } else if (currentStep === 'youtube') {
       setCurrentStep('entry');
     } else if (onBack) {
       onBack();
@@ -328,16 +281,6 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
         return (
           <YouTubeInputPanel
             onUrlSubmitted={handleYouTubeSubmit}
-            onBack={handleBack}
-            isLoading={isLoading}
-            error={error || undefined}
-          />
-        );
-      
-      case 'upload':
-        return (
-          <ScriptUploadPanel
-            onScriptUploaded={handleScriptUpload}
             onBack={handleBack}
             isLoading={isLoading}
             error={error || undefined}
@@ -439,9 +382,8 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
         
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-foreground">
-            {currentStep === 'entry' && 'Script Builder'}
+            {currentStep === 'entry' && 'YouTube Script Builder'}
             {currentStep === 'youtube' && 'YouTube Video Input'}
-            {currentStep === 'upload' && 'Script Upload'}
             {currentStep === 'building' && 'Interactive Script Builder'}
           </h1>
           

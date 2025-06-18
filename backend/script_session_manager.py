@@ -9,7 +9,6 @@ import tempfile
 
 class EntryMethod(Enum):
     YOUTUBE = "youtube"
-    UPLOAD = "upload"
 
 class SessionPhase(Enum):
     ENTRY = "entry"
@@ -59,14 +58,7 @@ class ChatMessage:
     timestamp: datetime.datetime
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-@dataclass
-class ScriptAnalysis:
-    structure_score: float
-    readability_score: float
-    suggestions: List[str]
-    key_points: List[str]
-    detected_sections: List[Dict[str, Any]]
-    metadata: Dict[str, Any] = field(default_factory=dict)
+# ScriptAnalysis class removed - YouTube only workflow
 
 @dataclass
 class ScriptSession:
@@ -81,10 +73,7 @@ class ScriptSession:
     use_default_prompt: bool = True
     custom_prompt: Optional[str] = None
     
-    # Upload path data
-    uploaded_script: Optional[str] = None
-    original_filename: Optional[str] = None
-    script_analysis: Optional[ScriptAnalysis] = None
+    # Upload path data removed - YouTube only workflow
     
     # Common building data
     bullet_points: List[BulletPoint] = field(default_factory=list)
@@ -328,9 +317,14 @@ class ScriptSessionManager:
             chat_history.append(ChatMessage(**message_dict))
         session_dict['chat_history'] = chat_history
         
-        # Handle script analysis if present
-        if session_dict['script_analysis']:
-            session_dict['script_analysis'] = ScriptAnalysis(**session_dict['script_analysis'])
+        # Remove script_analysis field if present in old sessions (backward compatibility)
+        if 'script_analysis' in session_dict:
+            del session_dict['script_analysis']
+        
+        # Remove other upload-related fields if present (backward compatibility)
+        for field in ['uploaded_script', 'original_filename']:
+            if field in session_dict:
+                del session_dict[field]
         
         return ScriptSession(**session_dict)
 

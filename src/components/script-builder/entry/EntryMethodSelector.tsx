@@ -3,202 +3,167 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../ui/card';
 import { Button } from '../../ui/button';
-import { Youtube, Upload, Clock, Star, Zap } from 'lucide-react';
-
-interface EntryMethod {
-  id: 'youtube' | 'upload';
-  title: string;
-  description: string;
-  icon: React.ComponentType<{ className?: string }>;
-  features: string[];
-  estimatedTime: string;
-  difficulty: 'Easy' | 'Medium';
-  badge?: string;
-}
+import { Youtube, Clock, Star, Zap, ArrowRight, Play } from 'lucide-react';
 
 interface EntryMethodSelectorProps {
-  onMethodSelected: (method: 'youtube' | 'upload') => void;
+  onMethodSelected: (method: 'youtube') => void;
   isLoading?: boolean;
 }
 
-const entryMethods: EntryMethod[] = [
-  {
-    id: 'youtube',
-    title: 'YouTube Video',
-    description: 'Extract and rewrite script from a YouTube video using AI',
-    icon: Youtube,
-    features: [
-      'Automatic transcript extraction',
-      'AI-powered script generation', 
-      'Optimized for video content',
-      'Built-in engagement optimization'
-    ],
-    estimatedTime: '5-10 minutes',
-    difficulty: 'Easy',
-    badge: 'Most Popular'
-  },
-  {
-    id: 'upload',
-    title: 'Upload Script',
-    description: 'Upload your existing script for AI-powered analysis and refinement',
-    icon: Upload,
-    features: [
-      'Comprehensive script analysis',
-      'AI-powered improvement suggestions',
-      'Structure optimization',
-      'Readability enhancement'
-    ],
-    estimatedTime: '2-5 minutes',
-    difficulty: 'Easy'
-  }
-];
-
 export function EntryMethodSelector({ onMethodSelected, isLoading = false }: EntryMethodSelectorProps) {
-  const [selectedMethod, setSelectedMethod] = useState<'youtube' | 'upload' | null>(null);
-  
-  const handleMethodClick = (methodId: 'youtube' | 'upload') => {
-    setSelectedMethod(methodId);
-  };
-  
   const handleContinue = () => {
-    if (selectedMethod) {
-      onMethodSelected(selectedMethod);
-    }
+    onMethodSelected('youtube');
   };
 
   return (
-    <div className="w-full max-w-6xl mx-auto space-y-6">
+    <div className="w-full max-w-4xl mx-auto space-y-8">
       {/* Header */}
       <div className="text-center space-y-4">
-        <h2 className="text-3xl font-bold text-foreground">
-          Choose Your Starting Point
+        <div className="flex items-center justify-center gap-3 mb-4">
+          <div className="p-3 rounded-full bg-primary/10">
+            <Youtube className="h-8 w-8 text-primary" />
+          </div>
+        </div>
+        <h2 className="text-4xl font-bold text-foreground">
+          YouTube Script Builder
         </h2>
-        <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-          Select how you'd like to begin building your script. Both methods lead to the same powerful interactive editor.
+        <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+          Transform any YouTube video into an optimized script with AI-powered analysis, 
+          interactive refinement, and professional content enhancement.
         </p>
       </div>
 
-      {/* Method Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {entryMethods.map((method) => {
-          const IconComponent = method.icon;
-          const isSelected = selectedMethod === method.id;
+      {/* Main Action Card */}
+      <Card className="relative transition-all duration-300 hover:shadow-xl border-primary/20 bg-gradient-to-br from-primary/5 to-primary/10">
+        {/* Premium Badge */}
+        <div className="absolute -top-3 left-6 z-10">
+          <div className="bg-gradient-to-r from-primary to-primary/80 text-primary-foreground px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 shadow-lg">
+            <Star className="h-3 w-3" />
+            AI-Powered Workflow
+          </div>
+        </div>
+        
+        <CardHeader className="pb-6">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-4 rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg">
+                <Youtube className="h-8 w-8" />
+              </div>
+              <div>
+                <CardTitle className="text-2xl mb-2">Start with YouTube Video</CardTitle>
+                <div className="flex items-center gap-3">
+                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                    Simple & Fast
+                  </span>
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Clock className="h-4 w-4" />
+                    <span className="text-sm">5-10 minutes</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        
+        <CardContent className="space-y-6">
+          <p className="text-lg text-muted-foreground leading-relaxed">
+            Simply paste a YouTube URL and let our AI extract, analyze, and transform the content 
+            into a professional script ready for video production.
+          </p>
           
-          return (
-            <Card 
-              key={method.id}
-              className={`relative cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-[1.02] ${
-                isSelected 
-                  ? 'ring-2 ring-primary shadow-lg bg-primary/5' 
-                  : 'hover:bg-accent/50'
-              }`}
-              onClick={() => handleMethodClick(method.id)}
-            >
-              {/* Badge */}
-              {method.badge && (
-                <div className="absolute -top-3 left-6 z-10">
-                  <div className="bg-primary text-primary-foreground px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1">
-                    <Star className="h-3 w-3" />
-                    {method.badge}
-                  </div>
+          {/* Workflow Steps */}
+          <div className="space-y-4">
+            <h4 className="font-semibold text-foreground flex items-center gap-2">
+              <Play className="h-4 w-4 text-primary" />
+              How it works:
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-background/50 border">
+                <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                  1
                 </div>
-              )}
-              
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-3 rounded-lg ${
-                      isSelected ? 'bg-primary text-primary-foreground' : 'bg-accent text-accent-foreground'
-                    }`}>
-                      <IconComponent className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-xl">{method.title}</CardTitle>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          method.difficulty === 'Easy' 
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                            : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                        }`}>
-                          {method.difficulty}
-                        </span>
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <Clock className="h-3 w-3" />
-                          <span className="text-xs">{method.estimatedTime}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Selection indicator */}
-                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-                    isSelected 
-                      ? 'border-primary bg-primary' 
-                      : 'border-muted-foreground/30'
-                  }`}>
-                    {isSelected && (
-                      <div className="w-2 h-2 bg-primary-foreground rounded-full" />
-                    )}
-                  </div>
+                <div>
+                  <h5 className="font-medium text-sm">Paste YouTube URL</h5>
+                  <p className="text-xs text-muted-foreground mt-1">Enter any YouTube video link</p>
                 </div>
-              </CardHeader>
-              
-              <CardContent className="space-y-4">
-                <p className="text-muted-foreground">{method.description}</p>
-                
-                {/* Features List */}
-                <div className="space-y-2">
-                  <h4 className="font-medium text-sm text-foreground">Key Features:</h4>
-                  <ul className="space-y-1">
-                    {method.features.map((feature, index) => (
-                      <li key={index} className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Zap className="h-3 w-3 text-primary flex-shrink-0" />
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
+              </div>
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-background/50 border">
+                <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                  2
                 </div>
-                
-                {/* Preview of next steps */}
-                <div className="pt-2 border-t border-border">
-                  <p className="text-xs text-muted-foreground">
-                    Next: {method.id === 'youtube' 
-                      ? 'Enter YouTube URL → Extract transcript → Interactive building'
-                      : 'Upload script → AI analysis → Interactive refinement'
-                    }
-                  </p>
+                <div>
+                  <h5 className="font-medium text-sm">AI Analysis</h5>
+                  <p className="text-xs text-muted-foreground mt-1">Extract transcript & generate bullet points</p>
                 </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+              </div>
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-background/50 border">
+                <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                  3
+                </div>
+                <div>
+                  <h5 className="font-medium text-sm">Interactive Building</h5>
+                  <p className="text-xs text-muted-foreground mt-1">Refine & enhance with AI assistance</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Features List */}
+          <div className="space-y-3">
+            <h4 className="font-semibold text-foreground">What you get:</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Zap className="h-3 w-3 text-primary flex-shrink-0" />
+                Automatic transcript extraction
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Zap className="h-3 w-3 text-primary flex-shrink-0" />
+                AI-powered content optimization
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Zap className="h-3 w-3 text-primary flex-shrink-0" />
+                Interactive script refinement
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Zap className="h-3 w-3 text-primary flex-shrink-0" />
+                Professional formatting
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Zap className="h-3 w-3 text-primary flex-shrink-0" />
+                Engagement optimization
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Zap className="h-3 w-3 text-primary flex-shrink-0" />
+                Real-time word count tracking
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* Continue Button */}
-      <div className="flex justify-center pt-4">
+      {/* Call to Action */}
+      <div className="text-center space-y-4">
         <Button
           onClick={handleContinue}
-          disabled={!selectedMethod || isLoading}
+          disabled={isLoading}
           size="lg"
-          className="px-8 py-3 text-lg font-medium"
+          className="px-12 py-4 text-lg font-semibold bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg"
         >
           {isLoading ? (
-            <div className="flex items-center gap-2">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
               <span>Starting...</span>
             </div>
-          ) : selectedMethod ? (
-            `Continue with ${entryMethods.find(m => m.id === selectedMethod)?.title}`
           ) : (
-            'Select a method to continue'
+            <div className="flex items-center gap-3">
+              <span>Start Building Your Script</span>
+              <ArrowRight className="h-5 w-5" />
+            </div>
           )}
         </Button>
-      </div>
-
-      {/* Info Section */}
-      <div className="text-center pt-6 border-t border-border">
+        
         <p className="text-sm text-muted-foreground">
-          Both methods lead to the same powerful interactive script editor where you can refine your content section by section.
+          No account required • Free to use • Privacy-focused
         </p>
       </div>
     </div>

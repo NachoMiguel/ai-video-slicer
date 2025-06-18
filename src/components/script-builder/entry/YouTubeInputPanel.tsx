@@ -35,20 +35,52 @@ export function YouTubeInputPanel({ onUrlSubmitted, onBack, isLoading = false, e
     return patterns.some(pattern => pattern.test(url));
   };
 
-  const handleUrlChange = (value: string) => {
+  const handleUrlChange = async (value: string) => {
     setUrl(value);
     const isValid = value ? validateYouTubeUrl(value) : null;
     setIsValidUrl(isValid);
     
-    // Mock video info extraction for valid URLs
+    // Fetch real video info for valid URLs
     if (isValid) {
-      setVideoInfo({
-        title: "How to Build Amazing React Components",
-        channel: "TechTutorials Pro",
-        duration: "12:45",
-        views: "125K views",
-        thumbnail: "https://via.placeholder.com/320x180"
-      });
+      try {
+        const formData = new FormData();
+        formData.append('youtube_url', value);
+        
+        const response = await fetch('http://127.0.0.1:8000/api/youtube/info', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setVideoInfo({
+            title: data.title || "Video Title",
+            channel: data.channel || "YouTube Channel",
+            duration: data.duration || "Unknown Duration",
+            views: data.views || "Unknown Views",
+            thumbnail: data.thumbnail || "https://via.placeholder.com/320x180"
+          });
+        } else {
+          // Fallback to basic info if API fails
+          setVideoInfo({
+            title: "Video information will be extracted during processing",
+            channel: "YouTube",
+            duration: "Unknown",
+            views: "Unknown",
+            thumbnail: "https://via.placeholder.com/320x180"
+          });
+        }
+      } catch (error) {
+        console.warn('Failed to fetch video info:', error);
+        // Fallback to basic info if API fails
+        setVideoInfo({
+          title: "Video information will be extracted during processing",
+          channel: "YouTube", 
+          duration: "Unknown",
+          views: "Unknown",
+          thumbnail: "https://via.placeholder.com/320x180"
+        });
+      }
     } else {
       setVideoInfo(null);
     }
@@ -312,12 +344,13 @@ export function YouTubeInputPanel({ onUrlSubmitted, onBack, isLoading = false, e
 
   return (
     <div className="w-full max-w-4xl mx-auto space-y-6">
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl font-bold text-foreground">
-          YouTube Video Input
-        </h2>
+      <div className="text-center space-y-4 mb-8">
+        <div className="flex items-center justify-center gap-2 mb-2">
+          <Youtube className="h-6 w-6 text-primary" />
+          <h2 className="text-2xl font-bold text-foreground">YouTube Video Input</h2>
+        </div>
         <p className="text-muted-foreground">
-          Enter a YouTube URL to extract and transform the content into your script
+          Paste a YouTube URL to extract and analyze the video content for script generation
         </p>
       </div>
 
