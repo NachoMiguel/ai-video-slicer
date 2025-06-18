@@ -23,6 +23,11 @@ const STORAGE_KEY = 'ai-video-slicer-settings';
 
 // Load initial preferences from localStorage
 const loadStoredPreferences = (): UserPreferences => {
+  // Only access localStorage on the client side
+  if (typeof window === "undefined") {
+    return DEFAULT_PREFERENCES;
+  }
+  
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
@@ -37,6 +42,11 @@ const loadStoredPreferences = (): UserPreferences => {
 
 // Save preferences to localStorage
 const savePreferences = (preferences: UserPreferences) => {
+  // Only access localStorage on the client side
+  if (typeof window === "undefined") {
+    return false;
+  }
+  
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
     return true;

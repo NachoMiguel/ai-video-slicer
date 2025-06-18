@@ -4,7 +4,6 @@ export { ScriptBuilder } from './ScriptBuilder';
 // Entry components
 export { EntryMethodSelector } from './entry/EntryMethodSelector';
 export { YouTubeInputPanel } from './entry/YouTubeInputPanel';
-export { ScriptUploadPanel } from './entry/ScriptUploadPanel';
 
 // Interactive components
 export { ChatInterface } from './interactive/ChatInterface';

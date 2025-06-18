@@ -4,25 +4,18 @@ import { useState } from 'react'
 import { useKeyboardShortcuts, createCommonShortcuts } from '../hooks/useKeyboardShortcuts'
 import { UploadZone } from '../components/UploadZone'
 import { ProcessingStatus } from '../components/ProcessingStatus'
-import { ScriptPanel } from '../components/ScriptPanel'
 import { VideoPreview } from '../components/VideoPreview'
 import { ScriptBuilder, type ScriptSession } from '../components/script-builder'
 import { WorkflowProgress } from '../components/WorkflowProgress'
-import { AppModeToggle } from '../components/AppModeToggle'
-import { LegacyVideoProcessor } from '../components/LegacyVideoProcessor'
 import { SettingsPanel } from '../components/settings'
 import { ThemeToggle } from '../components/theme-toggle'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
-import { ArrowLeft, Sparkles, Video, FileText, Settings } from 'lucide-react'
+import { ArrowLeft, Sparkles, Video, FileText, Settings, Youtube } from 'lucide-react'
 
-type WorkflowStep = 'welcome' | 'script-building' | 'video-upload' | 'processing' | 'results' | 'legacy' | 'settings'
-type AppMode = 'interactive' | 'legacy'
+type WorkflowStep = 'welcome' | 'script-building' | 'video-upload' | 'processing' | 'results' | 'settings'
 
 export default function Home() {
-  // App mode state
-  const [appMode, setAppMode] = useState<AppMode>('interactive')
-  
   // Main workflow state
   const [currentStep, setCurrentStep] = useState<WorkflowStep>('welcome')
   
@@ -165,31 +158,19 @@ export default function Home() {
           AI Video Slicer & Recomposer
         </h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          Transform your videos with AI-powered editing. {appMode === 'interactive' 
-            ? 'Build your script interactively, then let our intelligent system create compelling content.'
-            : 'Upload your YouTube URL and videos for automated processing.'
-          }
+          Transform YouTube videos with AI-powered editing. Interactive mode: Build your script interactively from any YouTube URL, then let our intelligent system create compelling content.
         </p>
-      </div>
-
-      {/* Mode Toggle */}
-      <div className="flex justify-center">
-        <AppModeToggle 
-          mode={appMode} 
-          onModeChange={setAppMode}
-          className="max-w-md"
-        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
         <Card className="relative overflow-hidden border-2 hover:border-primary/50 transition-all duration-300 hover:scale-105">
           <CardContent className="p-6 text-center">
             <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-              <FileText className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <Youtube className="h-6 w-6 text-blue-600 dark:text-blue-400" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">1. Build Script</h3>
+            <h3 className="text-lg font-semibold mb-2">1. YouTube Script Builder</h3>
             <p className="text-muted-foreground text-sm">
-              Use YouTube URLs or upload existing scripts. AI helps you refine and optimize content interactively.
+              Paste any YouTube URL and let AI extract, analyze, and transform content into optimized scripts.
             </p>
           </CardContent>
         </Card>
@@ -221,11 +202,11 @@ export default function Home() {
 
       <div className="pt-8">
         <Button
-          onClick={() => appMode === 'interactive' ? setCurrentStep('script-building') : setCurrentStep('legacy')}
+          onClick={() => setCurrentStep('script-building')}
           size="lg"
           className="px-8 py-4 text-lg font-semibold bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
         >
-          {appMode === 'interactive' ? 'Start Building Your Script' : 'Start Video Processing'}
+          Start Building Your Script
         </Button>
       </div>
     </div>
@@ -413,10 +394,16 @@ export default function Home() {
             <CardTitle className="text-xl font-semibold">Final Script</CardTitle>
           </CardHeader>
           <CardContent>
-            <ScriptPanel
-              script={result?.script || ''}
-              onDownload={handleDownloadScript}
-            />
+            <div className="space-y-4">
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 max-h-64 overflow-y-auto">
+                <pre className="text-sm whitespace-pre-wrap text-foreground">
+                  {result?.script || 'No script available'}
+                </pre>
+              </div>
+              <Button onClick={handleDownloadScript} className="w-full">
+                Download Script
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -478,28 +465,7 @@ export default function Home() {
     </div>
   )
 
-  const renderLegacy = () => (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center space-y-4">
-        <h2 className="text-3xl font-bold text-foreground">Legacy Mode</h2>
-        <p className="text-muted-foreground max-w-2xl mx-auto">
-          Traditional workflow: Generate script from YouTube, upload videos, and process automatically.
-        </p>
-        <Button
-          variant="outline"
-          onClick={() => setCurrentStep('welcome')}
-          className="mx-auto"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Welcome
-        </Button>
-      </div>
-      
-      {/* Legacy Processor */}
-      <LegacyVideoProcessor />
-    </div>
-  )
+
 
   const renderSettings = () => (
     <SettingsPanel 
@@ -534,7 +500,6 @@ export default function Home() {
         {currentStep === 'video-upload' && renderVideoUpload()}
         {currentStep === 'processing' && renderProcessing()}
         {currentStep === 'results' && renderResults()}
-        {currentStep === 'legacy' && renderLegacy()}
         {currentStep === 'settings' && renderSettings()}
       </div>
     </div>

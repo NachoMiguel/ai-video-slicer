@@ -3,9 +3,7 @@
 import { useState } from 'react'
 import { UploadZone } from './UploadZone'
 import { ProcessingStatus } from './ProcessingStatus'
-import { ScriptPanel } from './ScriptPanel'
 import { VideoPreview } from './VideoPreview'
-import { YouTubeScriptPanel } from './YouTubeScriptPanel'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 
@@ -114,10 +112,10 @@ export function LegacyVideoProcessor({ className = '' }: LegacyVideoProcessorPro
                 <CardTitle className="text-2xl font-semibold text-card-foreground">Script Generation</CardTitle>
               </CardHeader>
               <CardContent>
-                <YouTubeScriptPanel
-                  onScriptGenerated={handleScriptGenerated}
-                  isProcessing={isProcessing}
-                />
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>Legacy script generation panel removed.</p>
+                  <p className="text-sm mt-2">Please use the new Interactive Script Builder mode.</p>
+                </div>
               </CardContent>
             </Card>
 
@@ -214,10 +212,16 @@ export function LegacyVideoProcessor({ className = '' }: LegacyVideoProcessorPro
                 <CardTitle className="text-2xl font-semibold text-card-foreground">Generated Script</CardTitle>
               </CardHeader>
               <CardContent>
-                <ScriptPanel
-                  script={result.script}
-                  onDownload={handleDownloadScript}
-                />
+                <div className="space-y-4">
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 max-h-64 overflow-y-auto">
+                    <pre className="text-sm whitespace-pre-wrap text-foreground">
+                      {result.script}
+                    </pre>
+                  </div>
+                  <Button onClick={handleDownloadScript} className="w-full">
+                    Download Script
+                  </Button>
+                </div>
               </CardContent>
             </Card>
             <Card className="border border-border shadow-lg bg-card">
