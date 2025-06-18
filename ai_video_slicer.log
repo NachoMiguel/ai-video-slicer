@@ -41,3 +41,42 @@ main.PhaseTimeoutError: Phase Test Timeout Phase: Phase timed out after 1 second
 2025-06-14 14:31:25,058 - main - INFO -    transitions_count: 4
 2025-06-14 14:31:25,058 - main - INFO -    total_duration: 120.5
 2025-06-14 14:31:25,058 - main - INFO -    quality_score: 0.85
+2025-06-14 17:05:34,942 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-14 17:15:25,965 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-14 17:33:12,049 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-14 20:17:33,401 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-15 18:10:35,632 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-15 19:04:13,952 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-15 19:26:00,662 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-15 19:30:34,175 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-15 19:48:05,228 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-15 20:06:59,487 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-15 20:57:10,146 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-17 13:51:05,801 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-17 14:39:07,915 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
