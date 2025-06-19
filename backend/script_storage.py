@@ -79,7 +79,6 @@ class ScriptStorage:
                             'updated_at': script_data.get('updated_at'),
                             'source_url': script_data.get('source_url'),
                             'filename': filepath.name,
-                            'has_bullet_points': bool(script_data.get('bullet_points')),
                             'script_length': len(script_data.get('script_text', ''))
                         }
                         scripts.append(summary)
@@ -180,13 +179,8 @@ class ScriptStorage:
                 'script_text': session_data.get('current_script', ''),
                 'word_count': session_data.get('word_count', 0),
                 'source_url': session_data.get('source_url'),
-                'bullet_points': session_data.get('bullet_points', []),
                 'entry_method': session_data.get('entry_method'),
-                'target_word_count': session_data.get('target_word_count', 2000),
-                'sections_completed': session_data.get('sections_completed', 0),
-                'total_sections': session_data.get('total_sections', 0),
                 'messages': session_data.get('messages', []),
-                'analysis': session_data.get('analysis'),
                 'session_id': session_data.get('id')
             }
             

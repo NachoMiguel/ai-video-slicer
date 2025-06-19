@@ -12,7 +12,6 @@ interface SavedScript {
   updated_at: string;
   source_url?: string;
   filename: string;
-  has_bullet_points: boolean;
   script_length: number;
 }
 
@@ -160,8 +159,8 @@ export function DevModeToggle({
                   <ol className="text-left space-y-1 max-w-64 mx-auto">
                     <li>1. Switch to Normal Mode</li>
                     <li>2. Enter YouTube URL</li>
-                    <li>3. Generate bullet points</li>
-                    <li>4. Build script sections using chat</li>
+                    <li>3. Generate full script</li>
+                    <li>4. Modify script using highlight-to-edit</li>
                     <li>5. Click "Save Draft" button</li>
                     <li>6. Return here to use skip mode</li>
                   </ol>

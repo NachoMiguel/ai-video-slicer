@@ -254,8 +254,8 @@ export default function Home() {
                 <div className="text-sm text-muted-foreground">Words</div>
               </div>
               <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <div className="text-2xl font-bold text-foreground">{finalizedSession?.sectionsCompleted || 0}</div>
-                <div className="text-sm text-muted-foreground">Sections</div>
+                <div className="text-2xl font-bold text-foreground">{Math.ceil((finalizedSession?.wordCount || 0) / 250)}</div>
+                <div className="text-sm text-muted-foreground">Est. Minutes</div>
               </div>
             </div>
             

@@ -7,10 +7,8 @@ export interface SavedScript {
   updated_at: string;
   source_url?: string;
   filename: string;
-  has_bullet_points: boolean;
   script_length: number;
   script_text?: string;
-  bullet_points?: any[];
   ready_for_processing?: boolean;
 }
 
