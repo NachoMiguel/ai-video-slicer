@@ -29,12 +29,24 @@ export interface ChatMessage {
   status?: 'sending' | 'sent' | 'error';
 }
 
+export interface BulletPoint {
+  id: string;
+  title: string;
+  description: string;
+  target_length: number;
+  importance: string;
+  order: number;
+  key_points: string[];
+  emotional_tone: string;
+  engagement_strategy: string;
+}
+
 export interface ScriptSession {
   id: string;
   entryMethod: 'youtube' | null;
   sourceUrl?: string;
   currentScript: string;
-  bulletPoints: string[];
+  bulletPoints: BulletPoint[];
   messages: ChatMessage[];
   wordCount: number;
   targetWordCount: number;

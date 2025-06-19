@@ -16,6 +16,7 @@ import openai
 import whisper
 from dotenv import load_dotenv
 import yt_dlp
+from youtube_transcript_api import YouTubeTranscriptApi
 try:
     import face_recognition
     FACE_RECOGNITION_AVAILABLE = True
@@ -80,17 +81,30 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def safe_str(text):
-    """Safely convert text to string with UTF-8 encoding"""
+    """Safely convert text to string with Windows-compatible encoding"""
     if text is None:
         return ""
     try:
         # Convert to string first
         text_str = str(text)
-        # Remove problematic characters that can't be encoded in charmap
-        import re
-        # Replace common problematic Unicode characters
-        text_str = re.sub(r'[^\x00-\x7F]', '?', text_str)
-        return text_str
+        
+        # For Windows compatibility, encode to 'ascii' with 'ignore' to remove problematic Unicode
+        # This preserves basic characters but removes emojis and special symbols
+        safe_text = text_str.encode('ascii', errors='ignore').decode('ascii')
+        
+        # If the result is empty or too short, use a more permissive approach
+        if len(safe_text) < len(text_str) * 0.5:  # Lost more than 50% of characters
+            # Try cp1252 (Windows-1252) encoding which supports more characters
+            try:
+                safe_text = text_str.encode('cp1252', errors='ignore').decode('cp1252')
+            except:
+                # Fallback to removing only the most problematic characters
+                import re
+                # Remove common emoji and special Unicode characters that cause issues
+                safe_text = re.sub(r'[\u2600-\u26FF\u2700-\u27BF\u1F600-\u1F64F\u1F300-\u1F5FF\u1F680-\u1F6FF\u1F1E0-\u1F1FF]', '', text_str)
+        
+        return safe_text if safe_text else "Unknown_Title"
+        
     except Exception as e:
         print(f"[DEBUG] safe_str exception: {e}")
         return "ENCODING_ERROR"
@@ -3997,6 +4011,101 @@ async def set_entry_method(
         print(f"[ERROR] Failed to set entry method: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to set entry method: {str(e)}")
 
+def extract_video_id_from_url(youtube_url: str) -> str:
+    """
+    Extract video ID from various YouTube URL formats
+    Supports:
+    - https://www.youtube.com/watch?v=VIDEO_ID
+    - https://youtu.be/VIDEO_ID
+    - https://www.youtube.com/embed/VIDEO_ID
+    - https://www.youtube.com/v/VIDEO_ID
+    """
+    import re
+    
+    # Pattern to match various YouTube URL formats
+    patterns = [
+        r'(?:https?://)?(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]+)',
+        r'(?:https?://)?(?:www\.)?youtu\.be/([a-zA-Z0-9_-]+)',
+        r'(?:https?://)?(?:www\.)?youtube\.com/embed/([a-zA-Z0-9_-]+)',
+        r'(?:https?://)?(?:www\.)?youtube\.com/v/([a-zA-Z0-9_-]+)',
+        r'(?:https?://)?(?:www\.)?youtube\.com/watch\?.*v=([a-zA-Z0-9_-]+)',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, youtube_url)
+        if match:
+            return match.group(1)
+    
+    raise ValueError(f"Could not extract video ID from URL: {youtube_url}")
+
+def extract_youtube_captions(video_id: str) -> tuple[str, str]:
+    """
+    Extract captions from YouTube video using youtube-transcript-api
+    Returns: (transcript_text, method_used)
+    method_used can be: 'auto_generated', 'manual', or 'translated'
+    """
+    try:
+        print(f"[DEBUG] Attempting to extract captions for video ID: {video_id}")
+        
+        # Get available transcripts
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        
+        transcript = None
+        method_used = ""
+        
+        # Try to get the best available transcript
+        # Priority: manual > auto-generated > any language
+        try:
+            # First try English transcripts (manual or auto)
+            transcript = transcript_list.find_transcript(['en']).fetch()
+            
+            # Check if it's manual or auto-generated
+            for t in transcript_list:
+                if t.language_code == 'en':
+                    if t.is_generated:
+                        method_used = "auto_generated"
+                    else:
+                        method_used = "manual"
+                    break
+            
+            print(f"[DEBUG] Found English transcript: {method_used}")
+            
+        except Exception:
+            # If no English, try any available language
+            try:
+                # Get the first available transcript
+                available_transcripts = list(transcript_list)
+                if available_transcripts:
+                    transcript = available_transcripts[0].fetch()
+                    method_used = "translated"
+                    print(f"[DEBUG] Found transcript in language: {available_transcripts[0].language}")
+                else:
+                    raise Exception("No transcripts available")
+                    
+            except Exception:
+                raise Exception("No captions available for this video")
+        
+        if not transcript:
+            raise Exception("Failed to fetch transcript data")
+        
+        # Convert transcript format to plain text
+        transcript_text = ""
+        for entry in transcript:
+            transcript_text += entry['text'] + " "
+        
+        # Clean up the text
+        transcript_text = transcript_text.strip()
+        transcript_text = transcript_text.replace('\n', ' ').replace('  ', ' ')
+        
+        print(f"[DEBUG] Successfully extracted captions using {method_used} method")
+        print(f"[DEBUG] Caption length: {len(transcript_text)} characters")
+        
+        return transcript_text, method_used
+        
+    except Exception as e:
+        print(f"[DEBUG] Caption extraction failed: {str(e)}")
+        raise Exception(f"Caption extraction failed: {str(e)}")
+
 @app.post("/api/script/youtube/extract")
 async def extract_youtube_transcript(
     session_id: str = Form(...),
@@ -4017,79 +4126,93 @@ async def extract_youtube_transcript(
         print(f"[DEBUG] Session validated, extracting YouTube transcript for session {session_id}")
         print(f"[DEBUG] YouTube URL: {youtube_url}")
         
-        # Download and transcribe using existing logic
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Configure yt-dlp options
-            audio_path = os.path.join(temp_dir, "audio.%(ext)s")
-            ydl_opts = {
-                'format': 'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio',
-                'outtmpl': audio_path,
-                'noplaylist': True,
-                'quiet': False,
-                'no_warnings': False,
-            }
+        # Extract video ID from URL
+        video_id = extract_video_id_from_url(youtube_url)
+        print(f"[DEBUG] Extracted video ID: {video_id}")
+        
+        # STEP 1: Try to extract captions first (fast method)
+        transcript = None
+        extraction_method = ""
+        video_title = "Unknown Video"
+        
+        try:
+            print(f"[DEBUG] Attempting fast caption extraction...")
+            transcript, caption_method = extract_youtube_captions(video_id)
+            extraction_method = f"captions_{caption_method}"
+            print(f"[DEBUG] Caption extraction successful! Method: {caption_method}")
+            print(f"[DEBUG] Caption length: {len(transcript)} characters")
             
-            video_title = "Unknown Video"
-            actual_audio_path = None
+            # Get video title using yt-dlp (quick info extraction, no download)
+            try:
+                ydl_opts = {'quiet': True, 'no_warnings': True}
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(youtube_url, download=False)
+                    raw_title = info.get('title', 'Unknown Video')
+                    video_title = safe_str(raw_title)
+                    print(f"[DEBUG] Video title extracted and cleaned: {video_title[:50]}...")
+            except Exception as e:
+                print(f"[DEBUG] Could not extract video title: {e}")
+                video_title = "Unknown Video"
+                
+        except Exception as caption_error:
+            print(f"[DEBUG] Caption extraction failed: {caption_error}")
+            print(f"[DEBUG] Falling back to audio download + Whisper transcription...")
             
-            # Download audio
-            print(f"[DEBUG] Starting yt-dlp extraction...")
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                print(f"[DEBUG] Extracting video info...")
-                info = ydl.extract_info(youtube_url, download=False)
-                print(f"[DEBUG] Video info extracted successfully")
-                
-                video_title = info.get('title', 'Unknown Video')
-                print(f"[DEBUG] Raw video title type: {type(video_title)}")
-                print(f"[DEBUG] Raw video title length: {len(video_title) if video_title else 0}")
-                
-                # Clean title to avoid encoding issues
-                if video_title:
-                    print(f"[DEBUG] Cleaning video title...")
-                    video_title = video_title.encode('utf-8', errors='ignore').decode('utf-8')
-                    print(f"[DEBUG] Title cleaned successfully")
-                
-                print(f"[DEBUG] About to create safe title preview...")
-                try:
-                    safe_title_preview = safe_str(video_title)[:50] if video_title else "No title"
-                    print(f"[DEBUG] Safe title preview created successfully")
-                except Exception as e:
-                    print(f"[DEBUG] Error in safe_str: {e}")
-                    safe_title_preview = "Title encoding error"
-                
-                try:
-                    print(f"[DEBUG] Video title preview: {safe_title_preview}...")
-                    print(f"[DEBUG] Print statement completed successfully")
-                except Exception as e:
-                    print(f"[DEBUG] Error in print statement: {e}")
-                
-                print(f"[DEBUG] Starting audio download...")
-                ydl.download([youtube_url])
-                print(f"[DEBUG] Audio download completed")
-                
-                for file in os.listdir(temp_dir):
-                    if file.startswith("audio."):
-                        actual_audio_path = os.path.join(temp_dir, file)
-                        break
-                
-                if not actual_audio_path or not os.path.exists(actual_audio_path):
-                    raise Exception("Downloaded audio file not found")
+            # STEP 2: Fallback to audio download + Whisper (slow method)
+            extraction_method = "whisper_transcription"
             
-            # Transcribe with Whisper
-            print(f"[DEBUG] Starting Whisper transcription...")
-            result = whisper_model.transcribe(actual_audio_path)
-            transcript = result["text"]
-            print(f"[DEBUG] Whisper transcription completed")
-            
-            print(f"[DEBUG] Transcript length: {len(transcript)} characters")
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Configure yt-dlp options for audio-only download
+                audio_path = os.path.join(temp_dir, "audio.%(ext)s")
+                ydl_opts = {
+                    'format': 'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio',
+                    'outtmpl': audio_path,
+                    'noplaylist': True,
+                    'quiet': False,
+                    'no_warnings': False,
+                }
+                
+                actual_audio_path = None
+                
+                # Download audio only
+                print(f"[DEBUG] Starting audio-only download...")
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    print(f"[DEBUG] Extracting video info...")
+                    info = ydl.extract_info(youtube_url, download=False)
+                    print(f"[DEBUG] Video info extracted successfully")
+                    
+                    raw_title = info.get('title', 'Unknown Video')
+                    video_title = safe_str(raw_title)
+                    print(f"[DEBUG] Video title cleaned: {video_title[:50] if video_title else 'No title'}...")
+                    
+                    print(f"[DEBUG] Starting audio download...")
+                    ydl.download([youtube_url])
+                    print(f"[DEBUG] Audio download completed")
+                    
+                    # Find the downloaded audio file
+                    for file in os.listdir(temp_dir):
+                        if file.startswith("audio."):
+                            actual_audio_path = os.path.join(temp_dir, file)
+                            break
+                    
+                    if not actual_audio_path or not os.path.exists(actual_audio_path):
+                        raise Exception("Downloaded audio file not found")
+                
+                # Transcribe with Whisper
+                print(f"[DEBUG] Starting Whisper transcription...")
+                result = whisper_model.transcribe(actual_audio_path)
+                transcript = result["text"]
+                print(f"[DEBUG] Whisper transcription completed")
+                
+                print(f"[DEBUG] Transcript length: {len(transcript)} characters")
         
         # Update session with transcript data (using safe encoding)
         print(f"[DEBUG] Updating session with transcript data...")
-        safe_title = safe_str(video_title) if video_title else 'Unknown Video'
-        print(f"[DEBUG] Safe title created: {len(safe_title)} chars")
+        # video_title is already cleaned by safe_str earlier
+        print(f"[DEBUG] Title ready: {len(video_title)} chars")
         
         session.youtube_url = youtube_url
-        session.video_title = safe_title
+        session.video_title = video_title
         session.transcript = transcript
         session.use_default_prompt = use_default_prompt
         session.custom_prompt = custom_prompt
@@ -4101,23 +4224,24 @@ async def extract_youtube_transcript(
         
         # Add system message to chat history (with safe encoding)
         print(f"[DEBUG] Adding chat message...")
-        chat_message = f"Successfully extracted transcript from YouTube video: {safe_title}"
+        chat_message = f"Successfully extracted transcript from YouTube video: {video_title}"
         print(f"[DEBUG] Chat message created, length: {len(chat_message)}")
         
         session_manager.add_chat_message(
             session_id,
             "system",
             chat_message,
-            {"transcript_length": len(transcript), "video_title": safe_title}
+            {"transcript_length": len(transcript), "video_title": video_title}
         )
         print(f"[DEBUG] Chat message added successfully")
         
         print(f"[DEBUG] Creating return response...")
         response = {
             "status": "success",
-            "video_title": safe_title,
+            "video_title": video_title,
             "transcript": transcript,
             "transcript_length": len(transcript),
+            "extraction_method": extraction_method,
             "current_phase": session.current_phase.value
         }
         print(f"[DEBUG] Response created successfully")
@@ -4295,18 +4419,22 @@ async def script_chat(
                 
             elif command == '/help':
                 # Show help
-                response_content = """Available commands:
-/generate section [number] - Generate a specific section
-/refine section [number] [instruction] - Refine an existing section  
-/wordcount - Show current word count
-/help - Show this help message
+                response_content = """💡 Script Building Commands:
 
-Natural language commands:
-"start with point 1" or "generate section 1"
-"develop more point 2" or "expand section 2"
-"refine section 3 to be more engaging"
-"what's my word count?"
-"""
+Natural Language (Preferred):
+• "start with point 1" - Generate section 1
+• "now do point 2" - Generate section 2  
+• "make point 1 shorter" - Refine section 1
+• "develop more on section 3" - Expand section 3
+• "what's my word count?" - Check progress
+
+Slash Commands:
+• /generate section [number] - Generate specific section
+• /refine section [number] [instruction] - Refine section
+• /wordcount - Show current progress
+• /help - Show this help
+
+Just chat naturally - I'll understand what you want to do!"""
                 
             else:
                 response_content = f"Unknown command: {command}. Type /help for available commands."
@@ -4457,7 +4585,7 @@ async def handle_generate_section_command(session: ScriptSession, section_identi
             status=SectionStatus.COMPLETED
         )
         
-        return f"Generated section {section_number}: {bullet_point.title}\n\nWord count: {len(section_content.split())} words\n\n{section_content}", {
+        return f"✅ Section {section_number} generated successfully ({len(section_content.split())} words)", {
             "section_id": section.id,
             "section_number": section_number,
             "word_count": len(section_content.split())
@@ -4486,16 +4614,16 @@ async def handle_refine_section_command(session: ScriptSession, section_identifi
         client = create_openai_client(api_key)
         
         refine_prompt = f"""
-        Refine this script section based on the instruction:
+        You must EXECUTE the user's instruction by providing the actual improved content, not explaining how to do it.
         
         Current Section:
         {existing_section.content}
         
-        Instruction: {instruction}
+        User Instruction: {instruction}
         
         Target Length: {existing_section.target_word_count} characters
         
-        Provide the improved version of the section following the instruction while maintaining the overall quality and engagement.
+        IMPORTANT: Provide ONLY the improved version of the section. Do not explain what you changed or provide any commentary. Just return the actual revised content that follows the user's instruction.
         """
         
         response = client.chat.completions.create(
@@ -4513,7 +4641,7 @@ async def handle_refine_section_command(session: ScriptSession, section_identifi
             content=refined_content
         )
         
-        return f"Refined section {section_number} based on: {instruction}\n\nNew word count: {len(refined_content.split())} words\n\n{refined_content}", {
+        return f"✅ Section {section_number} refined successfully ({len(refined_content.split())} words)", {
             "section_id": existing_section.id,
             "section_number": section_number,
             "word_count": len(refined_content.split()),
@@ -4536,21 +4664,13 @@ async def handle_general_chat(session: ScriptSession, message: str):
         
         # Build context about current session state
         context = f"""
-        You are helping with interactive script building. Current session state:
-        - Entry method: {session.entry_method.value if session.entry_method else 'unknown'}
-        - Phase: {session.current_phase.value}
-        - Total sections: {len(session.sections)}
-        - Completed sections: {len([s for s in session.sections if s.status == SectionStatus.COMPLETED])}
-        - Current word count: {session.total_word_count}
-        - Target word count: {session.target_word_count}
+        You are a script building assistant. Give brief, helpful responses.
         
-        Available commands:
-        /generate section [number] - Generate a specific section
-        /refine section [number] [instruction] - Refine an existing section
-        /wordcount - Show current word count
-        /help - Show help
+        Current session:
+        - Completed sections: {len([s for s in session.sections if s.status == SectionStatus.COMPLETED])}/{len(session.bullet_points)} 
+        - Current word count: {session.total_word_count}/{session.target_word_count}
         
-        Provide helpful guidance about script building, answer questions, or suggest next steps.
+        Keep responses short and actionable. Suggest specific commands when appropriate.
         """
         
         response = client.chat.completions.create(
