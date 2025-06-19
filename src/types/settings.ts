@@ -1,3 +1,26 @@
+// Script storage types
+export interface SavedScript {
+  id: string;
+  title: string;
+  word_count: number;
+  created_at: string;
+  updated_at: string;
+  source_url?: string;
+  filename: string;
+  has_bullet_points: boolean;
+  script_length: number;
+  script_text?: string;
+  bullet_points?: any[];
+  ready_for_processing?: boolean;
+}
+
+export interface ScriptStorageState {
+  scripts: SavedScript[];
+  isLoading: boolean;
+  error: string | null;
+  selectedScript: SavedScript | null;
+}
+
 // Settings and preferences types
 export interface UserPreferences {
   // Video Settings

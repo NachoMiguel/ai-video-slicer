@@ -80,3 +80,12 @@ main.PhaseTimeoutError: Phase Test Timeout Phase: Phase timed out after 1 second
 2025-06-17 14:39:07,915 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
   warnings.warn("FP16 is not supported on CPU; using FP32 instead")
 
+2025-06-18 17:47:43,749 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-18 18:46:51,386 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-18 22:32:25,825 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
