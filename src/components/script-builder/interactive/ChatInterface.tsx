@@ -36,13 +36,13 @@ interface ChatInterfaceProps {
 const SLASH_COMMANDS = [
   {
     command: '/generate',
-    description: 'Generate content for a specific section',
-    usage: '/generate [section name]'
+    description: 'Generate the complete script from transcript',
+    usage: '/generate script'
   },
   {
     command: '/refine',
-    description: 'Refine existing content',
-    usage: '/refine [section name] [instructions]'
+    description: 'Refine the entire script or specific parts',
+    usage: '/refine [instructions]'
   },
   {
     command: '/wordcount',
@@ -61,8 +61,8 @@ const SLASH_COMMANDS = [
   },
   {
     command: '/tone',
-    description: 'Adjust tone for sections',
-    usage: '/tone [casual|professional|energetic] [section]'
+    description: 'Adjust tone for the script',
+    usage: '/tone [casual|professional|energetic]'
   }
 ];
 
@@ -302,13 +302,13 @@ export function ChatInterface({
               <div className="space-y-4">
                 <Bot className="h-12 w-12 text-muted-foreground mx-auto" />
                 <div>
-                  <h3 className="text-lg font-medium text-foreground">Ready to Build Your Script</h3>
+                  <h3 className="text-lg font-medium text-foreground">Ready to Generate Your Script</h3>
                   <p className="text-muted-foreground mt-1">
-                    Start by asking me to generate sections, refine content, or use slash commands for quick actions.
+                    Click "Generate Full Script" to create a complete script, or ask me to help with specific modifications.
                   </p>
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  Type <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">/help</code> to see available commands
+                  Type <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">generate script</code> or use <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">/help</code> for commands
                 </div>
               </div>
             </div>
@@ -375,7 +375,7 @@ export function ChatInterface({
                 value={inputValue}
                 onChange={(e) => handleInputChange(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask me to generate content, refine sections, or use /commands..."
+                placeholder="Ask me to refine the script, modify content, or use /commands..."
                 className="w-full resize-none border border-border rounded-lg px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent min-h-[60px] max-h-32"
                 disabled={isLoading}
                 rows={2}

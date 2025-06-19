@@ -24,31 +24,7 @@ class SectionStatus(Enum):
     COMPLETED = "completed"
     ERROR = "error"
 
-@dataclass
-class BulletPoint:
-    id: str
-    title: str
-    description: str
-    target_length: int
-    importance: str  # 'high', 'medium', 'low'
-    order: int
-    key_points: List[str] = field(default_factory=list)
-    emotional_tone: str = ""
-    engagement_strategy: str = ""
-
-@dataclass
-class ScriptSection:
-    id: str
-    bullet_point_id: str
-    title: str
-    content: str
-    word_count: int
-    target_word_count: int
-    status: SectionStatus
-    created_at: datetime.datetime
-    updated_at: datetime.datetime
-    version: int = 1
-    previous_versions: List[str] = field(default_factory=list)
+# Legacy BulletPoint and ScriptSection classes removed - using full script approach
 
 @dataclass
 class ChatMessage:
@@ -73,17 +49,8 @@ class ScriptSession:
     use_default_prompt: bool = True
     custom_prompt: Optional[str] = None
     
-    # Upload path data removed - YouTube only workflow
-    
-    # Common building data
-    bullet_points: List[BulletPoint] = field(default_factory=list)
-    sections: List[ScriptSection] = field(default_factory=list)
+    # Chat history
     chat_history: List[ChatMessage] = field(default_factory=list)
-    
-    # Progress tracking
-    total_word_count: int = 0
-    target_word_count: int = 20000
-    completion_percentage: float = 0.0
     
     # Session metadata
     created_at: datetime.datetime = field(default_factory=datetime.datetime.now)
@@ -181,57 +148,7 @@ class ScriptSessionManager:
         self.update_session(session)
         return message
     
-    def update_section(self, session_id: str, section_id: str, content: str = None, status: SectionStatus = None) -> ScriptSection:
-        """Update a script section"""
-        session = self.get_session(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
-        
-        section = next((s for s in session.sections if s.id == section_id), None)
-        if not section:
-            raise ValueError(f"Section {section_id} not found")
-        
-        if content is not None:
-            # Save previous version
-            if section.content:
-                section.previous_versions.append(section.content)
-            section.content = content
-            section.word_count = len(content.split()) if content else 0
-            section.version += 1
-        
-        if status is not None:
-            section.status = status
-        
-        section.updated_at = datetime.datetime.now()
-        
-        # Recalculate total word count
-        session.total_word_count = sum(s.word_count for s in session.sections)
-        session.completion_percentage = (session.total_word_count / session.target_word_count) * 100
-        
-        self.update_session(session)
-        return section
-    
-    def create_section(self, session_id: str, bullet_point_id: str, title: str, target_word_count: int = 2000) -> ScriptSection:
-        """Create a new script section"""
-        session = self.get_session(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
-        
-        section = ScriptSection(
-            id=str(uuid.uuid4()),
-            bullet_point_id=bullet_point_id,
-            title=title,
-            content="",
-            word_count=0,
-            target_word_count=target_word_count,
-            status=SectionStatus.PENDING,
-            created_at=datetime.datetime.now(),
-            updated_at=datetime.datetime.now()
-        )
-        
-        session.sections.append(section)
-        self.update_session(session)
-        return section
+    # Legacy section management methods removed - using full script approach
     
     def _save_session_to_disk(self, session: ScriptSession):
         """Save session to disk as JSON"""
@@ -272,12 +189,6 @@ class ScriptSessionManager:
             session_dict['entry_method'] = session.entry_method.value
         session_dict['current_phase'] = session.current_phase.value
         
-        # Handle sections
-        for section_dict in session_dict['sections']:
-            section_dict['status'] = section_dict['status'].value if isinstance(section_dict['status'], SectionStatus) else section_dict['status']
-            section_dict['created_at'] = section_dict['created_at'].isoformat() if isinstance(section_dict['created_at'], datetime.datetime) else section_dict['created_at']
-            section_dict['updated_at'] = section_dict['updated_at'].isoformat() if isinstance(section_dict['updated_at'], datetime.datetime) else section_dict['updated_at']
-        
         # Handle chat messages
         for message_dict in session_dict['chat_history']:
             message_dict['timestamp'] = message_dict['timestamp'].isoformat() if isinstance(message_dict['timestamp'], datetime.datetime) else message_dict['timestamp']
@@ -295,21 +206,6 @@ class ScriptSessionManager:
             session_dict['entry_method'] = EntryMethod(session_dict['entry_method'])
         session_dict['current_phase'] = SessionPhase(session_dict['current_phase'])
         
-        # Handle bullet points
-        bullet_points = []
-        for bp_dict in session_dict['bullet_points']:
-            bullet_points.append(BulletPoint(**bp_dict))
-        session_dict['bullet_points'] = bullet_points
-        
-        # Handle sections
-        sections = []
-        for section_dict in session_dict['sections']:
-            section_dict['status'] = SectionStatus(section_dict['status'])
-            section_dict['created_at'] = datetime.datetime.fromisoformat(section_dict['created_at'])
-            section_dict['updated_at'] = datetime.datetime.fromisoformat(section_dict['updated_at'])
-            sections.append(ScriptSection(**section_dict))
-        session_dict['sections'] = sections
-        
         # Handle chat messages
         chat_history = []
         for message_dict in session_dict['chat_history']:
@@ -317,12 +213,11 @@ class ScriptSessionManager:
             chat_history.append(ChatMessage(**message_dict))
         session_dict['chat_history'] = chat_history
         
-        # Remove script_analysis field if present in old sessions (backward compatibility)
-        if 'script_analysis' in session_dict:
-            del session_dict['script_analysis']
-        
-        # Remove other upload-related fields if present (backward compatibility)
-        for field in ['uploaded_script', 'original_filename']:
+        # Remove legacy fields if present in old sessions (backward compatibility)
+        legacy_fields = ['script_analysis', 'uploaded_script', 'original_filename', 
+                        'bullet_points', 'sections', 'total_word_count', 'target_word_count', 
+                        'completion_percentage']
+        for field in legacy_fields:
             if field in session_dict:
                 del session_dict[field]
         

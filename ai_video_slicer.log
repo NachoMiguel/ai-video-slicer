@@ -89,3 +89,21 @@ main.PhaseTimeoutError: Phase Test Timeout Phase: Phase timed out after 1 second
 2025-06-18 22:32:25,825 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
   warnings.warn("FP16 is not supported on CPU; using FP32 instead")
 
+2025-06-19 13:23:09,100 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-19 13:41:43,980 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-19 15:10:35,397 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-19 18:12:26,122 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-19 18:51:37,104 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+2025-06-19 19:23:37,191 - py.warnings - WARNING - C:\Users\ASUS\AppData\Local\Programs\Python\Python312\Lib\site-packages\whisper\transcribe.py:115: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+

@@ -2,14 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
-import { ArrowLeft, Play, Save, Download, List, Target, Zap } from 'lucide-react';
+import { ArrowLeft, Play, Save, Download, List, Target, Zap, FileText } from 'lucide-react';
 
 // Entry components
 import { EntryMethodSelector } from './entry/EntryMethodSelector';
 import { YouTubeInputPanel } from './entry/YouTubeInputPanel';
 
-// Interactive components
-import { ChatInterface } from './interactive/ChatInterface';
+// Interactive components removed - using single panel approach
 
 // Shared components
 import { ScriptAnalysisDisplay } from './shared/ScriptAnalysisDisplay';
@@ -29,30 +28,13 @@ export interface ChatMessage {
   status?: 'sending' | 'sent' | 'error';
 }
 
-export interface BulletPoint {
-  id: string;
-  title: string;
-  description: string;
-  target_length: number;
-  importance: string;
-  order: number;
-  key_points: string[];
-  emotional_tone: string;
-  engagement_strategy: string;
-}
-
 export interface ScriptSession {
   id: string;
   entryMethod: 'youtube' | null;
   sourceUrl?: string;
   currentScript: string;
-  bulletPoints: BulletPoint[];
   messages: ChatMessage[];
   wordCount: number;
-  targetWordCount: number;
-  sectionsCompleted: number;
-  totalSections: number;
-  analysis?: any;
   isFinalized: boolean;
 }
 
@@ -68,12 +50,8 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
     id: '',
     entryMethod: null,
     currentScript: '',
-    bulletPoints: [],
     messages: [],
     wordCount: 0,
-    targetWordCount: 2000,
-    sectionsCompleted: 0,
-    totalSections: 5,
     isFinalized: false
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -196,7 +174,6 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
         entryMethod: 'youtube',
         sourceUrl: scriptData.source_url,
         currentScript: scriptData.script_text || '',
-        bulletPoints: scriptData.bullet_points || [],
         messages: [
           {
             id: Date.now().toString(),
@@ -218,9 +195,6 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
           }
         ],
         wordCount: scriptData.word_count,
-        targetWordCount: scriptData.word_count,
-        sectionsCompleted: scriptData.bullet_points?.length || 0,
-        totalSections: scriptData.bullet_points?.length || 0,
         isFinalized: true
       };
 
@@ -280,47 +254,38 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
       
             const data = await response.json();
       
-      // Add system message for transcript extraction
-      const systemMessage: ChatMessage = {
-        id: Date.now().toString(),
-        type: 'system',
-        content: `Successfully extracted content from YouTube video: ${data.video_title}. Transcript length: ${data.transcript_length} characters.`,
-        timestamp: new Date()
-      };
-
+      // Update session with URL and automatically generate script
       setSession(prev => ({
         ...prev,
         sourceUrl: url,
-        messages: [systemMessage]
+        messages: [] // Clear messages since we're not using chat interface
       }));
 
-      // Automatically generate bullet points after transcript extraction
-      const bulletFormData = new FormData();
-      bulletFormData.append('session_id', session.id);
-      
-      const bulletResponse = await fetch('http://127.0.0.1:8000/api/script/generate-bullet-points', {
-        method: 'POST',
-        body: bulletFormData
-      });
-      
-      if (!bulletResponse.ok) throw new Error('Failed to generate bullet points');
-      
-      const bulletData = await bulletResponse.json();
-      
-      // Add AI message for bullet points generation
-      const aiMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        type: 'assistant',
-        content: `Generated ${bulletData.bullet_points?.length || 0} bullet points for your script. You can now start building sections interactively by typing commands like "/generate section 1" or asking me to refine specific sections.`,
-        timestamp: new Date()
-      };
+      // Generate full script automatically after extraction
+      try {
+        const scriptFormData = new FormData();
+        scriptFormData.append('session_id', session.id);
 
-      setSession(prev => ({
-        ...prev,
-        bulletPoints: bulletData.bullet_points || [],
-        messages: [...prev.messages, aiMessage],
-        totalSections: bulletData.bullet_points?.length || 5
-      }));
+        const scriptResponse = await fetch('http://127.0.0.1:8000/api/script/generate-full-script', {
+          method: 'POST',
+          body: scriptFormData
+        });
+
+        if (!scriptResponse.ok) throw new Error('Failed to generate script');
+
+        const scriptData = await scriptResponse.json();
+
+        setSession(prev => ({
+          ...prev,
+          currentScript: scriptData.script || '',
+          wordCount: scriptData.word_count || 0
+        }));
+
+      } catch (scriptErr) {
+        console.error('Script auto-generation failed:', scriptErr);
+        // Script generation failed, but user can manually generate later
+        setError('Script auto-generation failed. Use the "Generate Full Script" button to try again.');
+      }
 
       setCurrentStep('building');
     } catch (err) {
@@ -330,22 +295,10 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
     }
   };
 
-  const handleSendMessage = async (message: string) => {
-    if (!message.trim() || isLoading) return;
+  // Chat message handling removed - using direct script generation approach
 
-    // Add user message immediately
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: message,
-      timestamp: new Date(),
-      status: 'sending'
-    };
-
-    setSession(prev => ({
-      ...prev,
-      messages: [...prev.messages, userMessage]
-    }));
+  const handleGenerateFullScript = async () => {
+    if (!session.id) return;
 
     try {
       setIsLoading(true);
@@ -353,58 +306,35 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
 
       const formData = new FormData();
       formData.append('session_id', session.id);
-      formData.append('message', message);
-      formData.append('message_type', 'user');
 
-      const response = await fetch('http://127.0.0.1:8000/api/script/chat', {
+      const response = await fetch('http://127.0.0.1:8000/api/script/generate-full-script', {
         method: 'POST',
         body: formData
       });
 
-      if (!response.ok) throw new Error('Failed to send message');
+      if (!response.ok) throw new Error('Failed to generate script');
 
       const data = await response.json();
 
-      // Add AI response message
-      const aiMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        type: 'assistant' as const,
-        content: data.ai_response?.content || 'Response received',
-        timestamp: new Date()
-      };
-
-      // Update session with response data
       setSession(prev => ({
         ...prev,
-        messages: prev.messages.map(msg => {
-          if (msg.id === userMessage.id) {
-            return { ...msg, status: 'sent' as const };
-          }
-          return msg;
-        }).concat([aiMessage]),
-        // Update script content from backend
-        currentScript: data.script_data?.current_script || prev.currentScript,
-        wordCount: data.script_data?.word_count || prev.wordCount,
-        sectionsCompleted: data.script_data?.sections_completed || prev.sectionsCompleted,
-        totalSections: data.script_data?.total_sections || prev.totalSections
+        currentScript: data.script || '',
+        wordCount: data.word_count || 0
       }));
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send message');
-      
-      // Mark user message as error
-      setSession(prev => ({
-        ...prev,
-        messages: prev.messages.map(msg => {
-          if (msg.id === userMessage.id) {
-            return { ...msg, status: 'error' as const };
-          }
-          return msg;
-        })
-      }));
+      setError(err instanceof Error ? err.message : 'Failed to generate script');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleScriptUpdate = (newScript: string) => {
+    setSession(prev => ({
+      ...prev,
+      currentScript: newScript,
+      wordCount: newScript.split(' ').length
+    }));
   };
 
   const handleSaveDraft = async () => {
@@ -543,67 +473,72 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
               </div>
             )}
 
-            {/* Main 2-Column Layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[600px]">
-              {/* Left Column - Script Panel */}
-              <div className="flex flex-col space-y-4">
+            {/* Single Column Layout - Script Panel Only */}
+            <div className="max-w-5xl mx-auto">
+              <div className="space-y-6">
+                {/* Script Panel - Centered with proper height */}
                 <ScriptPanel
                   script={session.currentScript}
                   wordCount={session.wordCount}
-                  bulletPoints={session.bulletPoints}
-                  className="flex-1"
+                  bulletPoints={[]}
+                  className="min-h-[500px] max-h-[70vh]"
+                  sessionId={session.id}
+                  onScriptUpdate={handleScriptUpdate}
+                  isModificationMode={!skipMode}
                 />
                 
-                {/* Progress Tracker - Full width under left column */}
-                <SimpleWordCounter
-                  currentWords={session.wordCount}
-                  targetWords={session.targetWordCount}
-                />
-              </div>
-              
-              {/* Right Column - Chat Interface + Action Buttons */}
-              <div className="flex flex-col space-y-4">
-                <div className="flex-1">
-                  <ChatInterface
-                    sessionId={session.id}
-                    messages={session.messages}
-                    onSendMessage={skipMode && session.isFinalized ? () => {} : handleSendMessage}
-                    isLoading={isLoading}
-                    wordCount={session.wordCount}
-                    targetWordCount={session.targetWordCount}
+                {/* Progress Tracker */}
+                <div className="w-full">
+                  <SimpleWordCounter
+                    currentWords={session.wordCount}
+                    targetWords={2000}
                   />
                 </div>
                 
-                {/* Action Buttons - Under right column only */}
-                <div className="space-y-3">
-                  <Button
-                    onClick={handleFinalize}
-                    disabled={isLoading || session.wordCount < 500}
-                    className="w-full flex items-center gap-2"
-                    size="lg"
-                  >
-                    <Play className="h-4 w-4" />
-                    Start Video Editing
-                  </Button>
-                  
-                  <div className="grid grid-cols-2 gap-2">
+                {/* Action Buttons - Centered under script panel */}
+                <div className="flex justify-center">
+                  <div className="flex flex-col items-center space-y-3 w-full max-w-md">
+                    {!session.currentScript && (
+                      <Button
+                        onClick={handleGenerateFullScript}
+                        disabled={isLoading}
+                        className="w-full flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
+                        size="lg"
+                      >
+                        <FileText className="h-4 w-4" />
+                        Generate Full Script
+                      </Button>
+                    )}
+                    
                     <Button
-                      variant="outline"
-                      disabled={isLoading}
-                      className="flex items-center gap-2"
-                      onClick={handleSaveDraft}
+                      onClick={handleFinalize}
+                      disabled={isLoading || session.wordCount < 500}
+                      className="w-full flex items-center gap-2"
+                      size="lg"
                     >
-                      <Save className="h-4 w-4" />
-                      Save Draft
+                      <Play className="h-4 w-4" />
+                      Start Video Editing
                     </Button>
-                    <Button
-                      variant="outline"
-                      disabled={isLoading}
-                      className="flex items-center gap-2"
-                    >
-                      <Download className="h-4 w-4" />
-                      Export
-                    </Button>
+                    
+                    <div className="grid grid-cols-2 gap-2 w-full">
+                      <Button
+                        variant="outline"
+                        disabled={isLoading}
+                        className="flex items-center gap-2"
+                        onClick={handleSaveDraft}
+                      >
+                        <Save className="h-4 w-4" />
+                        Save Draft
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={isLoading}
+                        className="flex items-center gap-2"
+                      >
+                        <Download className="h-4 w-4" />
+                        Export
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -611,18 +546,7 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
 
 
 
-            {session.analysis && (
-              <ScriptAnalysisDisplay
-                analysis={session.analysis}
-                onRefineSection={(sectionName) => {
-                  handleSendMessage(`/refine ${sectionName} Please improve this section`);
-                }}
-                onImplementSuggestion={(suggestionId) => {
-                  handleSendMessage(`Please implement suggestion ${suggestionId}`);
-                }}
-                isLoading={isLoading}
-              />
-            )}
+            {/* Script analysis removed - using full script approach */}
           </div>
         );
       

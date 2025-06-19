@@ -3880,10 +3880,7 @@ try:
         session_manager, 
         ScriptSession, 
         EntryMethod, 
-        SessionPhase, 
-        SectionStatus,
-        BulletPoint,
-        ScriptSection,
+        SessionPhase,
         ChatMessage
     )
 except ImportError:
@@ -3892,10 +3889,7 @@ except ImportError:
         session_manager, 
         ScriptSession, 
         EntryMethod, 
-        SessionPhase, 
-        SectionStatus,
-        BulletPoint,
-        ScriptSection,
+        SessionPhase,
         ChatMessage
     )
 # Script analyzer removed - YouTube only workflow
@@ -3967,9 +3961,6 @@ async def initialize_script_session():
                 "session_id": session.session_id,
                 "entry_method": session.entry_method.value if session.entry_method else None,
                 "current_phase": session.current_phase.value,
-                "total_word_count": session.total_word_count,
-                "target_word_count": session.target_word_count,
-                "completion_percentage": session.completion_percentage,
                 "created_at": session.created_at.isoformat()
             }
         }
@@ -4254,15 +4245,15 @@ async def extract_youtube_transcript(
 
 # Upload script endpoint removed - YouTube only workflow
 
-@app.post("/api/script/generate-bullet-points")
-async def generate_bullet_points(session_id: str = Form(...)):
-    """Generate bullet points from YouTube transcript"""
+@app.post("/api/script/generate-full-script")
+async def generate_full_script(session_id: str = Form(...)):
+    """Generate a complete script from YouTube transcript"""
     try:
         session = session_manager.get_session(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        print(f"[DEBUG] Generating bullet points for session {session_id}")
+        print(f"[DEBUG] Generating full script for session {session_id}")
         
         # Validate YouTube entry method and transcript
         if session.entry_method != EntryMethod.YOUTUBE:
@@ -4272,15 +4263,23 @@ async def generate_bullet_points(session_id: str = Form(...)):
             raise HTTPException(status_code=400, detail="No transcript available")
         
         content = session.transcript
-        context = f"Video Title: {session.video_title}\n\nTranscript:\n{content}"
+        print(f"[DEBUG] Original transcript length: {len(content)} characters")
+        print(f"[DEBUG] Transcript preview: {content[:200]}...")
         
         # Use prompts from prompts.md file for default, or user custom prompt
         if session.use_default_prompt:
-            prompt = load_prompt_from_file("Basic YouTube Content Analysis")
+            # Try to load the correct prompt for full script generation
+            try:
+                prompt = load_prompt_from_file("Advanced YouTube Content Script Generation")
+                print(f"[DEBUG] Loaded Advanced YouTube Content Script Generation prompt")
+            except:
+                print(f"[DEBUG] Failed to load Advanced YouTube Content Script Generation, using built-in prompt")
+                # Use our built-in full script generation prompt instead of the fallback
+                prompt = None  # Will use the built-in prompt below
         else:
             prompt = session.custom_prompt
         
-        # Generate bullet points using OpenAI
+        # Generate full script using OpenAI
         api_key = os.getenv("OPENAI_API_KEY_1") or os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise HTTPException(status_code=500, detail="OpenAI API key not configured")
@@ -4288,88 +4287,553 @@ async def generate_bullet_points(session_id: str = Form(...)):
         from backend.openai_account_manager import create_openai_client
         client = create_openai_client(api_key)
         
-        bullet_prompt = f"""
-        {prompt}
+        # Use the loaded prompt or build our own
+        if prompt:
+            # Use the prompt from file, but customize it for this specific transcript
+            script_prompt = f"""
+            {prompt}
+            
+            CRITICAL REQUIREMENTS FOR THIS TRANSCRIPT:
+            - Original transcript length: {len(content)} characters
+            - Target output length: {len(content)*0.8:.0f}-{len(content)*1.2:.0f} characters
+            - Preserve ALL information from the original transcript
+            - Video title: {session.video_title}
+            
+            Original Transcript:
+            {content}
+            """
+        else:
+            # Use our built-in comprehensive prompt
+            script_prompt = f"""
+            Transform this YouTube transcript into a compelling, coherent script for content creation.
+
+            CRITICAL: Preserve ALL information from the original transcript while making it more engaging. The output should be similar in length to the input transcript ({len(content)} characters).
+
+            Create a single, flowing narrative that:
+            - Preserves ALL key information, details, and context from the original transcript
+            - Transforms the content into engaging, compelling narrative without losing any substance
+            - Has natural transitions between topics and ideas
+            - Maintains viewer interest throughout with hooks and engaging language
+            - Uses conversational, engaging tone that feels natural
+            - Avoids repetitive or robotic phrasing
+            - Incorporates storytelling techniques for better retention
+            - Maintains similar length to the original transcript (aim for {len(content)*0.8:.0f}-{len(content)*1.2:.0f} characters)
+            - Write as if you're telling an engaging story to a friend
+            - Include emotional moments and relatable human experiences
+            - Use varied sentence lengths and rhythms to maintain interest
+            - Create curiosity gaps and build anticipation throughout
+
+            Video Title: {session.video_title}
+            Original Transcript Length: {len(content)} characters
+            
+            Original Transcript:
+            {content}
+
+            Write the complete script as continuous flowing text. Do not use bullet points, section headers, or fragmented content. Create one cohesive narrative that preserves all the original information while making it more engaging and readable. Your output should be approximately {len(content)*0.9:.0f} characters long.
+            """
         
-        Create exactly 10 bullet points in this JSON format:
-        [
-            {{
-                "id": "bp_1",
-                "title": "Section Title",
-                "description": "2-3 sentences about this section",
-                "target_length": 2500,
-                "importance": "high",
-                "order": 1,
-                "key_points": ["point 1", "point 2", "point 3"],
-                "emotional_tone": "engaging",
-                "engagement_strategy": "hooks and questions"
-            }}
-        ]
+        print(f"[DEBUG] Script prompt length: {len(script_prompt)} characters")
         
-        Content:
-        {context[:3000]}...
-        """
-        
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": bullet_prompt}],
-            temperature=0.7
-        )
-        
-        # Parse bullet points
-        bullet_points_data = json.loads(response.choices[0].message.content)
-        
-        # Create BulletPoint objects
-        bullet_points = []
-        for bp_data in bullet_points_data:
-            bullet_point = BulletPoint(
-                id=bp_data.get('id', f"bp_{len(bullet_points)+1}"),
-                title=bp_data.get('title', f"Section {len(bullet_points)+1}"),
-                description=bp_data.get('description', ''),
-                target_length=bp_data.get('target_length', 2000),
-                importance=bp_data.get('importance', 'medium'),
-                order=bp_data.get('order', len(bullet_points)+1),
-                key_points=bp_data.get('key_points', []),
-                emotional_tone=bp_data.get('emotional_tone', ''),
-                engagement_strategy=bp_data.get('engagement_strategy', '')
+        # Try GPT-4 first for better instruction following, fallback to GPT-3.5
+        try:
+            print(f"[DEBUG] Attempting script generation with GPT-4...")
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": script_prompt}],
+                temperature=0.7,
+                max_tokens=16000  # Increased for longer responses - preserve full transcript content
             )
-            bullet_points.append(bullet_point)
+            print(f"[DEBUG] GPT-4 generation successful")
+        except Exception as gpt4_error:
+            print(f"[DEBUG] GPT-4 failed ({gpt4_error}), falling back to GPT-3.5-turbo...")
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": script_prompt}],
+                temperature=0.7,
+                max_tokens=16000  # Increased for longer responses - preserve full transcript content
+            )
         
-        # Update session
-        session.bullet_points = bullet_points
+        # Get the response content
+        full_script = response.choices[0].message.content
+        print(f"[DEBUG] Generated script length: {len(full_script) if full_script else 0} characters")
+        print(f"[DEBUG] Generated script preview: {full_script[:200] if full_script else 'None'}...")
+        print(f"[DEBUG] OpenAI response usage: {response.usage if hasattr(response, 'usage') else 'No usage info'}")
+        
+        if not full_script or full_script.strip() == "":
+            raise Exception("OpenAI returned empty script")
+        
+        # Validate script length - should be similar to original transcript
+        original_length = len(content)
+        min_expected = int(original_length * 0.6)  # At least 60% of original
+        
+        if len(full_script) < min_expected:
+            print(f"[WARNING] Generated script is much shorter than expected ({len(full_script)} chars vs {original_length} original), attempting to expand...")
+            print(f"[DEBUG] Minimum expected length: {min_expected} characters ({original_length * 0.6:.0f})")
+            
+            expand_prompt = f"""
+            The following script is too short compared to the original transcript. The original had {original_length} characters, but the script only has {len(full_script)} characters.
+            
+            Expand it to preserve more of the original content by:
+            - Adding back important details that may have been omitted
+            - Including more context and explanations from the original transcript
+            - Expanding on key points with additional context from the source material
+            - Adding smooth transitions and elaborative content
+            - Maintaining the same tone and flow
+            - Target length: {int(original_length * 0.8)}-{int(original_length * 1.0)} characters
+            
+            Original Transcript Reference (for context):
+            {content[:2000]}...
+            
+            Current script to expand:
+            {full_script}
+            
+            Provide the expanded version that better preserves the original content while maintaining engaging flow.
+            """
+            
+            expand_response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": expand_prompt}],
+                temperature=0.7,
+                max_tokens=16000
+            )
+            
+            expanded_script = expand_response.choices[0].message.content
+            if expanded_script and len(expanded_script) > len(full_script):
+                full_script = expanded_script
+                print(f"[DEBUG] Expanded script to {len(full_script)} characters")
+        
+        # Update session with full script
+        session.final_script = full_script
+        session.total_word_count = len(full_script.split())
+        session.completion_percentage = 100.0
+        session.current_phase = SessionPhase.REVIEW
         session_manager.update_session(session)
         
         # Add chat message
         session_manager.add_chat_message(
             session_id,
             "ai",
-            f"Generated {len(bullet_points)} bullet points for your script. You can now start building sections interactively.",
-            {"bullet_points_count": len(bullet_points)}
+            f"Generated complete script with {len(full_script)} characters. You can now review and modify the script using the highlight-to-edit features.",
+            {"script_length": len(full_script), "word_count": len(full_script.split())}
         )
         
         return {
             "status": "success",
-            "bullet_points": [
-                {
-                    "id": bp.id,
-                    "title": bp.title,
-                    "description": bp.description,
-                    "target_length": bp.target_length,
-                    "importance": bp.importance,
-                    "order": bp.order,
-                    "key_points": bp.key_points,
-                    "emotional_tone": bp.emotional_tone,
-                    "engagement_strategy": bp.engagement_strategy
-                }
-                for bp in bullet_points
-            ]
+            "script": full_script,
+            "word_count": len(full_script.split()),
+            "character_count": len(full_script)
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Bullet point generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Bullet point generation failed: {str(e)}")
+        print(f"[ERROR] Full script generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Script generation failed: {str(e)}")
+
+@app.post("/api/script/modify-text")
+async def modify_selected_text(
+    session_id: str = Form(...),
+    selected_text: str = Form(...),
+    modification_type: str = Form(...),  # 'shorten', 'expand', 'rewrite', 'delete', 'make_engaging'
+    context_before: str = Form(""),
+    context_after: str = Form("")
+):
+    """Modify selected text from the full script"""
+    try:
+        session = session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        if not session.final_script:
+            raise HTTPException(status_code=400, detail="No script available to modify")
+        
+        print(f"[DEBUG] Modifying text for session {session_id}, type: {modification_type}")
+        
+        # Generate modification using OpenAI
+        api_key = os.getenv("OPENAI_API_KEY_1") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+        
+        from backend.openai_account_manager import create_openai_client
+        client = create_openai_client(api_key)
+        
+        # Create modification prompt based on type
+        modification_prompts = {
+            'shorten': f"""
+            Shorten the following text while preserving its core meaning and maintaining natural flow with the surrounding context.
+            
+            Context before: "{context_before}"
+            Text to shorten: "{selected_text}"
+            Context after: "{context_after}"
+            
+            Provide only the shortened version that flows naturally with the context.
+            """,
+            'expand': f"""
+            Expand the following text with more detail, examples, or engaging content while maintaining the same tone and style.
+            
+            Context before: "{context_before}"
+            Text to expand: "{selected_text}"
+            Context after: "{context_after}"
+            
+            Provide only the expanded version that flows naturally with the context.
+            """,
+            'rewrite': f"""
+            Rewrite the following text to be more engaging and compelling while preserving the core message and maintaining flow with surrounding context.
+            
+            Context before: "{context_before}"
+            Text to rewrite: "{selected_text}"
+            Context after: "{context_after}"
+            
+            Provide only the rewritten version that flows naturally with the context.
+            """,
+            'delete': f"""
+            The user wants to delete this text: "{selected_text}"
+            
+            Provide a smooth transition that connects the before and after context naturally:
+            Context before: "{context_before}"
+            Context after: "{context_after}"
+            
+            Provide only the connecting text (can be empty if contexts connect naturally).
+            """,
+            'make_engaging': f"""
+            Make the following text more engaging, dynamic, and compelling while preserving its meaning and maintaining natural flow.
+            
+            Context before: "{context_before}"
+            Text to make engaging: "{selected_text}"
+            Context after: "{context_after}"
+            
+            Provide only the more engaging version that flows naturally with the context.
+            """
+        }
+        
+        if modification_type not in modification_prompts:
+            raise HTTPException(status_code=400, detail="Invalid modification type")
+        
+        prompt = modification_prompts[modification_type]
+        
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=1000
+        )
+        
+        modified_text = response.choices[0].message.content
+        
+        if not modified_text:
+            raise Exception("OpenAI returned empty modification")
+        
+        # For delete operation, the modified_text is the connecting text
+        if modification_type == 'delete':
+            replacement_text = modified_text.strip()
+        else:
+            replacement_text = modified_text.strip()
+        
+        return {
+            "status": "success",
+            "original_text": selected_text,
+            "modified_text": replacement_text,
+            "modification_type": modification_type
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Text modification failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Text modification failed: {str(e)}")
+
+@app.post("/api/script/apply-modification")
+async def apply_text_modification(
+    session_id: str = Form(...),
+    original_text: str = Form(...),
+    modified_text: str = Form(...)
+):
+    """Apply a text modification to the full script"""
+    try:
+        session = session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        if not session.final_script:
+            raise HTTPException(status_code=400, detail="No script available to modify")
+        
+        # Replace the text in the script
+        if original_text in session.final_script:
+            session.final_script = session.final_script.replace(original_text, modified_text, 1)  # Replace only first occurrence
+            session.total_word_count = len(session.final_script.split())
+            session_manager.update_session(session)
+            
+            # Add chat message
+            session_manager.add_chat_message(
+                session_id,
+                "ai",
+                f"Applied text modification. Script updated successfully.",
+                {"modification_applied": True}
+            )
+            
+            return {
+                "status": "success",
+                "updated_script": session.final_script,
+                "word_count": session.total_word_count,
+                "character_count": len(session.final_script)
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Original text not found in script")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Apply modification failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Apply modification failed: {str(e)}")
+
+@app.post("/api/script/modify-bulk-text")
+async def modify_bulk_selected_text(
+    session_id: str = Form(...),
+    selections: str = Form(...),  # JSON string of selections array
+    modification_type: str = Form(...)  # 'shorten', 'expand', 'rewrite', 'delete', 'make_engaging'
+):
+    """Modify multiple selected texts from the full script"""
+    try:
+        session = session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        if not session.final_script:
+            raise HTTPException(status_code=400, detail="No script available to modify")
+        
+        print(f"[DEBUG] Bulk modifying text for session {session_id}, type: {modification_type}")
+        
+        # Parse selections JSON
+        import json
+        try:
+            selections_data = json.loads(selections)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid selections JSON format")
+        
+        if not isinstance(selections_data, list) or len(selections_data) == 0:
+            raise HTTPException(status_code=400, detail="Selections must be a non-empty array")
+        
+        # Validate selections structure
+        for i, selection in enumerate(selections_data):
+            required_fields = ['text', 'contextBefore', 'contextAfter', 'startOffset', 'endOffset']
+            for field in required_fields:
+                if field not in selection:
+                    raise HTTPException(status_code=400, detail=f"Selection {i} missing required field: {field}")
+        
+        # Generate modifications using OpenAI
+        api_key = os.getenv("OPENAI_API_KEY_1") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+        
+        from backend.openai_account_manager import create_openai_client
+        client = create_openai_client(api_key)
+        
+        # Process each selection
+        modification_results = []
+        
+        for i, selection in enumerate(selections_data):
+            selected_text = selection['text']
+            context_before = selection['contextBefore']
+            context_after = selection['contextAfter']
+            
+            # Create modification prompt based on type
+            modification_prompts = {
+                'shorten': f"""
+                Shorten the following text while preserving its core meaning and maintaining natural flow with the surrounding context.
+                
+                Context before: "{context_before}"
+                Text to shorten: "{selected_text}"
+                Context after: "{context_after}"
+                
+                Provide only the shortened version that flows naturally with the context.
+                """,
+                'expand': f"""
+                Expand the following text with more detail, examples, or engaging content while maintaining the same tone and style.
+                
+                Context before: "{context_before}"
+                Text to expand: "{selected_text}"
+                Context after: "{context_after}"
+                
+                Provide only the expanded version that flows naturally with the context.
+                """,
+                'rewrite': f"""
+                Rewrite the following text to be more engaging and compelling while preserving the core message and maintaining flow with surrounding context.
+                
+                Context before: "{context_before}"
+                Text to rewrite: "{selected_text}"
+                Context after: "{context_after}"
+                
+                Provide only the rewritten version that flows naturally with the context.
+                """,
+                'delete': f"""
+                The user wants to delete this text: "{selected_text}"
+                
+                Provide a smooth transition that connects the before and after context naturally:
+                Context before: "{context_before}"
+                Context after: "{context_after}"
+                
+                Provide only the connecting text (can be empty if contexts connect naturally).
+                """,
+                'make_engaging': f"""
+                Make the following text more engaging, dynamic, and compelling while preserving its meaning and maintaining natural flow.
+                
+                Context before: "{context_before}"
+                Text to make engaging: "{selected_text}"
+                Context after: "{context_after}"
+                
+                Provide only the more engaging version that flows naturally with the context.
+                """
+            }
+            
+            if modification_type not in modification_prompts:
+                raise HTTPException(status_code=400, detail="Invalid modification type")
+            
+            prompt = modification_prompts[modification_type]
+            
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7,
+                    max_tokens=1000
+                )
+                
+                modified_text = response.choices[0].message.content
+                
+                if not modified_text:
+                    raise Exception("OpenAI returned empty modification")
+                
+                # For delete operation, the modified_text is the connecting text
+                if modification_type == 'delete':
+                    replacement_text = modified_text.strip()
+                else:
+                    replacement_text = modified_text.strip()
+                
+                modification_results.append({
+                    "index": i,
+                    "original_text": selected_text,
+                    "modified_text": replacement_text,
+                    "start_offset": selection['startOffset'],
+                    "end_offset": selection['endOffset'],
+                    "success": True
+                })
+                
+            except Exception as e:
+                print(f"[ERROR] Failed to modify selection {i}: {e}")
+                modification_results.append({
+                    "index": i,
+                    "original_text": selected_text,
+                    "modified_text": selected_text,  # Keep original on error
+                    "start_offset": selection['startOffset'],
+                    "end_offset": selection['endOffset'],
+                    "success": False,
+                    "error": str(e)
+                })
+        
+        return {
+            "status": "success",
+            "modification_type": modification_type,
+            "total_selections": len(selections_data),
+            "successful_modifications": len([r for r in modification_results if r['success']]),
+            "results": modification_results
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Bulk text modification failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Bulk text modification failed: {str(e)}")
+
+@app.post("/api/script/apply-bulk-modification")
+async def apply_bulk_text_modification(
+    session_id: str = Form(...),
+    modifications: str = Form(...)  # JSON string of modifications array
+):
+    """Apply multiple text modifications to the full script atomically"""
+    try:
+        session = session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        if not session.final_script:
+            raise HTTPException(status_code=400, detail="No script available to modify")
+        
+        print(f"[DEBUG] Applying bulk modifications for session {session_id}")
+        
+        # Parse modifications JSON
+        import json
+        try:
+            modifications_data = json.loads(modifications)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid modifications JSON format")
+        
+        if not isinstance(modifications_data, list) or len(modifications_data) == 0:
+            raise HTTPException(status_code=400, detail="Modifications must be a non-empty array")
+        
+        # Store original script for rollback
+        original_script = session.final_script
+        
+        try:
+            # Sort modifications by start_offset in descending order to avoid position shifts
+            sorted_modifications = sorted(modifications_data, key=lambda x: x.get('start_offset', 0), reverse=True)
+            
+            updated_script = session.final_script
+            applied_count = 0
+            
+            for modification in sorted_modifications:
+                if not modification.get('success', False):
+                    continue  # Skip failed modifications
+                
+                original_text = modification['original_text']
+                modified_text = modification['modified_text']
+                
+                # Find and replace the text
+                if original_text in updated_script:
+                    # Replace only the first occurrence to avoid issues with duplicate text
+                    updated_script = updated_script.replace(original_text, modified_text, 1)
+                    applied_count += 1
+                else:
+                    print(f"[WARNING] Original text not found in script: {original_text[:50]}...")
+            
+            # Update session with the new script
+            session.final_script = updated_script
+            session.total_word_count = len(updated_script.split())
+            session_manager.update_session(session)
+            
+            # Add chat message
+            session_manager.add_chat_message(
+                session_id,
+                "ai",
+                f"Applied {applied_count} bulk text modifications. Script updated successfully.",
+                {
+                    "bulk_modification_applied": True,
+                    "total_modifications": len(modifications_data),
+                    "successful_applications": applied_count
+                }
+            )
+            
+            return {
+                "status": "success",
+                "updated_script": session.final_script,
+                "word_count": session.total_word_count,
+                "character_count": len(session.final_script),
+                "total_modifications": len(modifications_data),
+                "applied_modifications": applied_count
+            }
+            
+        except Exception as e:
+            # Rollback on error
+            session.final_script = original_script
+            session_manager.update_session(session)
+            raise e
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Apply bulk modification failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Apply bulk modification failed: {str(e)}")
+
+# Legacy bullet points endpoint removed - use generate-full-script instead
 
 @app.post("/api/script/chat")
 async def script_chat(
@@ -4388,11 +4852,11 @@ async def script_chat(
         # Add user message to chat history
         user_message = session_manager.add_chat_message(session_id, message_type, message)
         
-        # Process chat commands
+        # Process chat commands - simplified for full script approach
         response_content = ""
         response_metadata = {}
         
-        # Check for commands (both slash commands and natural language)
+        # Check for commands
         message_lower = message.lower()
         
         if message.startswith('/'):
@@ -4400,73 +4864,37 @@ async def script_chat(
             command_parts = message.split(' ', 2)
             command = command_parts[0].lower()
             
-            if command == '/generate' and len(command_parts) >= 3:
-                # Generate specific section
-                section_identifier = command_parts[1] + ' ' + command_parts[2]  # e.g., "section 1"
-                response_content, response_metadata = await handle_generate_section_command(session, section_identifier)
-                
-            elif command == '/refine' and len(command_parts) >= 3:
-                # Refine existing section
-                section_identifier = command_parts[1]
-                instruction = ' '.join(command_parts[2:])
-                response_content, response_metadata = await handle_refine_section_command(session, section_identifier, instruction)
-                
-            elif command == '/wordcount':
+            if command == '/wordcount':
                 # Show word count
-                total_words = sum(section.word_count for section in session.sections)
-                response_content = f"Current word count: {total_words} / {session.target_word_count} words ({session.completion_percentage:.1f}% complete)"
-                response_metadata = {"total_words": total_words, "target_words": session.target_word_count}
+                script_length = len(session.final_script) if session.final_script else 0
+                word_count = len(session.final_script.split()) if session.final_script else 0
+                response_content = f"Current script: {word_count:,} words ({script_length:,} characters)"
+                response_metadata = {"word_count": word_count, "character_count": script_length}
                 
             elif command == '/help':
                 # Show help
-                response_content = """💡 Script Building Commands:
+                response_content = """💡 Script Building Help:
 
-Natural Language (Preferred):
-• "start with point 1" - Generate section 1
-• "now do point 2" - Generate section 2  
-• "make point 1 shorter" - Refine section 1
-• "develop more on section 3" - Expand section 3
-• "what's my word count?" - Check progress
-
-Slash Commands:
-• /generate section [number] - Generate specific section
-• /refine section [number] [instruction] - Refine section
-• /wordcount - Show current progress
+Available Commands:
+• /wordcount - Show current script statistics
 • /help - Show this help
 
-Just chat naturally - I'll understand what you want to do!"""
+Script Editing:
+• Generate a full script first, then use highlight-to-edit features
+• Select any text in the script to modify it
+• Use bulk editing for multiple selections
+
+Just ask me questions about your script naturally - I'm here to help!"""
                 
             else:
                 response_content = f"Unknown command: {command}. Type /help for available commands."
         
-        elif any(phrase in message_lower for phrase in ['start with point', 'generate section', 'begin with point', 'create section']):
-            # Natural language: "start with point 1", "generate section 2", etc.
-            import re
-            section_match = re.search(r'(?:point|section)\s+(\d+)', message_lower)
-            if section_match:
-                section_number = section_match.group(1)
-                response_content, response_metadata = await handle_generate_section_command(session, f"section {section_number}")
-            else:
-                response_content = "I understand you want to generate a section, but please specify which one. For example: 'start with point 1' or 'generate section 2'"
-        
-        elif any(phrase in message_lower for phrase in ['develop more', 'expand', 'refine', 'improve']):
-            # Natural language: "develop more point 1", "expand section 2", "refine section 3 to be more engaging"
-            import re
-            section_match = re.search(r'(?:point|section)\s+(\d+)', message_lower)
-            if section_match:
-                section_number = section_match.group(1)
-                # Extract instruction after the section number
-                instruction_match = re.search(r'(?:point|section)\s+\d+\s+(.+)', message_lower)
-                instruction = instruction_match.group(1) if instruction_match else "make it more engaging and detailed"
-                response_content, response_metadata = await handle_refine_section_command(session, f"section {section_number}", instruction)
-            else:
-                response_content = "I understand you want to refine a section, but please specify which one. For example: 'develop more point 1' or 'refine section 2 to be more engaging'"
-        
         elif any(phrase in message_lower for phrase in ['word count', 'how many words', 'progress', 'status']):
             # Natural language word count request
-            total_words = sum(section.word_count for section in session.sections)
-            response_content = f"📊 Current progress: {total_words:,} / {session.target_word_count:,} words ({session.completion_percentage:.1f}% complete)\n\nCompleted sections: {len([s for s in session.sections if s.status == SectionStatus.COMPLETED])}/{len(session.bullet_points)}"
-            response_metadata = {"total_words": total_words, "target_words": session.target_word_count}
+            script_length = len(session.final_script) if session.final_script else 0
+            word_count = len(session.final_script.split()) if session.final_script else 0
+            response_content = f"📊 Current script: {word_count:,} words ({script_length:,} characters)"
+            response_metadata = {"word_count": word_count, "character_count": script_length}
         
         else:
             # Handle general chat message
@@ -4479,15 +4907,6 @@ Just chat naturally - I'll understand what you want to do!"""
             response_content,
             response_metadata
         )
-        
-        # Build complete script from all completed sections in bullet point order
-        completed_sections = [s for s in session.sections if s.status == SectionStatus.COMPLETED]
-        
-        # Sort sections by bullet point order
-        bullet_point_order = {bp.id: bp.order for bp in session.bullet_points}
-        completed_sections.sort(key=lambda x: bullet_point_order.get(x.bullet_point_id, 999))
-        
-        complete_script = "\n\n".join([section.content for section in completed_sections])
         
         return {
             "status": "success",
@@ -4508,10 +4927,9 @@ Just chat naturally - I'll understand what you want to do!"""
                 "current_phase": session.current_phase.value
             },
             "script_data": {
-                "current_script": complete_script,
-                "word_count": session.total_word_count,
-                "sections_completed": len(completed_sections),
-                "total_sections": len(session.bullet_points)
+                "current_script": session.final_script or "",
+                "word_count": len(session.final_script.split()) if session.final_script else 0,
+                "character_count": len(session.final_script) if session.final_script else 0
             }
         }
         
@@ -4521,138 +4939,7 @@ Just chat naturally - I'll understand what you want to do!"""
         print(f"[ERROR] Chat processing failed: {e}")
         raise HTTPException(status_code=500, detail=f"Chat processing failed: {str(e)}")
 
-async def handle_generate_section_command(session: ScriptSession, section_identifier: str):
-    """Handle /generate section command"""
-    try:
-        # Parse section number
-        section_number = int(section_identifier.split()[-1])
-        
-        if section_number < 1 or section_number > len(session.bullet_points):
-            return f"Invalid section number. Please choose between 1 and {len(session.bullet_points)}.", {}
-        
-        bullet_point = session.bullet_points[section_number - 1]
-        
-        # Check if section already exists
-        existing_section = next((s for s in session.sections if s.bullet_point_id == bullet_point.id), None)
-        if existing_section:
-            return f"Section {section_number} already exists. Use /refine to modify it.", {"section_id": existing_section.id}
-        
-        # Generate section content using OpenAI
-        api_key = os.getenv("OPENAI_API_KEY_1") or os.getenv("OPENAI_API_KEY")
-        from backend.openai_account_manager import create_openai_client
-        client = create_openai_client(api_key)
-        
-        # Prepare context (YouTube only)
-        context = f"Video: {session.video_title}\nTranscript: {session.transcript[:1000]}..."
-        
-        section_prompt = f"""
-        Write a compelling script section based on this bullet point:
-        
-        Title: {bullet_point.title}
-        Description: {bullet_point.description}
-        Target Length: {bullet_point.target_length} characters
-        Key Points: {', '.join(bullet_point.key_points)}
-        Emotional Tone: {bullet_point.emotional_tone}
-        Engagement Strategy: {bullet_point.engagement_strategy}
-        
-        Context:
-        {context}
-        
-        Write ONLY the script content for this section. Make it engaging, conversational, and approximately {bullet_point.target_length} characters long.
-        """
-        
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": section_prompt}],
-            temperature=0.7
-        )
-        
-        section_content = response.choices[0].message.content
-        
-        # Create section
-        section = session_manager.create_section(
-            session.session_id,
-            bullet_point.id,
-            bullet_point.title,
-            bullet_point.target_length
-        )
-        
-        # Update section with content
-        session_manager.update_section(
-            session.session_id,
-            section.id,
-            content=section_content,
-            status=SectionStatus.COMPLETED
-        )
-        
-        return f"✅ Section {section_number} generated successfully ({len(section_content.split())} words)", {
-            "section_id": section.id,
-            "section_number": section_number,
-            "word_count": len(section_content.split())
-        }
-        
-    except ValueError:
-        return "Invalid section number format. Use: /generate section [number]", {}
-    except Exception as e:
-        print(f"[ERROR] Section generation failed: {e}")
-        return f"Failed to generate section: {str(e)}", {}
-
-async def handle_refine_section_command(session: ScriptSession, section_identifier: str, instruction: str):
-    """Handle /refine section command"""
-    try:
-        section_number = int(section_identifier.split()[-1]) if section_identifier.startswith('section') else int(section_identifier)
-        
-        bullet_point = session.bullet_points[section_number - 1]
-        existing_section = next((s for s in session.sections if s.bullet_point_id == bullet_point.id), None)
-        
-        if not existing_section:
-            return f"Section {section_number} doesn't exist yet. Use /generate to create it first.", {}
-        
-        # Refine section using OpenAI
-        api_key = os.getenv("OPENAI_API_KEY_1") or os.getenv("OPENAI_API_KEY")
-        from backend.openai_account_manager import create_openai_client
-        client = create_openai_client(api_key)
-        
-        refine_prompt = f"""
-        You must EXECUTE the user's instruction by providing the actual improved content, not explaining how to do it.
-        
-        Current Section:
-        {existing_section.content}
-        
-        User Instruction: {instruction}
-        
-        Target Length: {existing_section.target_word_count} characters
-        
-        IMPORTANT: Provide ONLY the improved version of the section. Do not explain what you changed or provide any commentary. Just return the actual revised content that follows the user's instruction.
-        """
-        
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": refine_prompt}],
-            temperature=0.7
-        )
-        
-        refined_content = response.choices[0].message.content
-        
-        # Update section
-        session_manager.update_section(
-            session.session_id,
-            existing_section.id,
-            content=refined_content
-        )
-        
-        return f"✅ Section {section_number} refined successfully ({len(refined_content.split())} words)", {
-            "section_id": existing_section.id,
-            "section_number": section_number,
-            "word_count": len(refined_content.split()),
-            "instruction": instruction
-        }
-        
-    except (ValueError, IndexError):
-        return "Invalid section identifier. Use: /refine section [number] [instruction]", {}
-    except Exception as e:
-        print(f"[ERROR] Section refinement failed: {e}")
-        return f"Failed to refine section: {str(e)}", {}
+# Legacy section-based helper functions removed - using full script approach
 
 async def handle_general_chat(session: ScriptSession, message: str):
     """Handle general chat messages"""
@@ -4663,14 +4950,17 @@ async def handle_general_chat(session: ScriptSession, message: str):
         client = create_openai_client(api_key)
         
         # Build context about current session state
+        script_length = len(session.final_script) if session.final_script else 0
+        word_count = len(session.final_script.split()) if session.final_script else 0
+        
         context = f"""
         You are a script building assistant. Give brief, helpful responses.
         
         Current session:
-        - Completed sections: {len([s for s in session.sections if s.status == SectionStatus.COMPLETED])}/{len(session.bullet_points)} 
-        - Current word count: {session.total_word_count}/{session.target_word_count}
+        - Script status: {'Generated' if session.final_script else 'Not generated yet'}
+        - Current word count: {word_count:,} words ({script_length:,} characters)
         
-        Keep responses short and actionable. Suggest specific commands when appropriate.
+        Keep responses short and actionable. Focus on helping with script editing and improvement.
         """
         
         response = client.chat.completions.create(
@@ -4686,7 +4976,7 @@ async def handle_general_chat(session: ScriptSession, message: str):
         
     except Exception as e:
         print(f"[ERROR] General chat failed: {e}")
-        return "I'm here to help with your script building. Try using commands like /generate section 1 or /wordcount to get started!", {}
+        return "I'm here to help with your script building. Generate a full script first, then use the highlight-to-edit features to modify it!", {}
 
 @app.get("/api/script/session/{session_id}")
 async def get_script_session(session_id: str):
@@ -4705,35 +4995,6 @@ async def get_script_session(session_id: str):
                 "youtube_url": session.youtube_url,
                 "video_title": session.video_title,
                 "transcript": session.transcript,
-                "bullet_points": [
-                    {
-                        "id": bp.id,
-                        "title": bp.title,
-                        "description": bp.description,
-                        "target_length": bp.target_length,
-                        "importance": bp.importance,
-                        "order": bp.order,
-                        "key_points": bp.key_points,
-                        "emotional_tone": bp.emotional_tone,
-                        "engagement_strategy": bp.engagement_strategy
-                    }
-                    for bp in session.bullet_points
-                ],
-                "sections": [
-                    {
-                        "id": section.id,
-                        "bullet_point_id": section.bullet_point_id,
-                        "title": section.title,
-                        "content": section.content,
-                        "word_count": section.word_count,
-                        "target_word_count": section.target_word_count,
-                        "status": section.status.value,
-                        "created_at": section.created_at.isoformat(),
-                        "updated_at": section.updated_at.isoformat(),
-                        "version": section.version
-                    }
-                    for section in session.sections
-                ],
                 "chat_history": [
                     {
                         "id": msg.id,
@@ -4744,10 +5005,6 @@ async def get_script_session(session_id: str):
                     }
                     for msg in session.chat_history
                 ],
-                "total_word_count": session.total_word_count,
-                "target_word_count": session.target_word_count,
-                "completion_percentage": session.completion_percentage,
-                # Script analysis removed - YouTube only workflow
                 "final_script": session.final_script,
                 "is_finalized": session.is_finalized,
                 "created_at": session.created_at.isoformat(),
@@ -4769,22 +5026,11 @@ async def finalize_script(session_id: str = Form(...)):
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        # Check if we have enough content
-        completed_sections = [s for s in session.sections if s.status == SectionStatus.COMPLETED]
-        if len(completed_sections) == 0:
-            raise HTTPException(status_code=400, detail="No completed sections found. Generate at least one section before finalizing.")
-        
-        # Combine all sections into final script
-        final_script_parts = []
-        for bullet_point in session.bullet_points:
-            section = next((s for s in session.sections if s.bullet_point_id == bullet_point.id and s.status == SectionStatus.COMPLETED), None)
-            if section:
-                final_script_parts.append(section.content)
-        
-        final_script = "\n\n".join(final_script_parts)
+        # Check if we have a script
+        if not session.final_script or session.final_script.strip() == "":
+            raise HTTPException(status_code=400, detail="No script found. Generate a script before finalizing.")
         
         # Update session
-        session.final_script = final_script
         session.is_finalized = True
         session.current_phase = SessionPhase.COMPLETE
         
@@ -4794,20 +5040,18 @@ async def finalize_script(session_id: str = Form(...)):
         session_manager.add_chat_message(
             session_id,
             "system",
-            f"Script finalized successfully! Total length: {len(final_script)} characters ({len(final_script.split())} words)",
+            f"Script finalized successfully! Total length: {len(session.final_script)} characters ({len(session.final_script.split())} words)",
             {
-                "final_word_count": len(final_script.split()),
-                "final_char_count": len(final_script),
-                "sections_included": len(final_script_parts)
+                "final_word_count": len(session.final_script.split()),
+                "final_char_count": len(session.final_script)
             }
         )
         
         return {
             "status": "success",
-            "final_script": final_script,
-            "word_count": len(final_script.split()),
-            "char_count": len(final_script),
-            "sections_included": len(final_script_parts),
+            "final_script": session.final_script,
+            "word_count": len(session.final_script.split()),
+            "char_count": len(session.final_script),
             "is_finalized": True
         }
         
@@ -4854,29 +5098,16 @@ async def save_script(
             raise HTTPException(status_code=404, detail="Session not found")
         
         # Create script data from session
+        script_length = len(session.final_script) if session.final_script else 0
+        word_count = len(session.final_script.split()) if session.final_script else 0
+        
         session_data = {
             "id": session_id,
             "entry_method": session.entry_method.value if session.entry_method else None,
             "source_url": session.youtube_url,
             "current_script": session.final_script or "",
-            "bullet_points": [
-                {
-                    "id": bp.id,
-                    "title": bp.title,
-                    "description": bp.description,
-                    "target_length": bp.target_length,
-                    "importance": bp.importance,
-                    "order": bp.order,
-                    "key_points": bp.key_points,
-                    "emotional_tone": bp.emotional_tone,
-                    "engagement_strategy": bp.engagement_strategy
-                }
-                for bp in session.bullet_points
-            ],
-            "word_count": session.total_word_count,
-            "target_word_count": session.target_word_count,
-            "sections_completed": len([s for s in session.sections if s.status.value == "completed"]),
-            "total_sections": len(session.bullet_points),
+            "word_count": word_count,
+            "character_count": script_length,
             "messages": [
                 {
                     "id": msg.id,
@@ -4983,7 +5214,6 @@ async def load_script_for_processing(script_id: str = Form(...)):
                 "script_text": script["script_text"],
                 "word_count": script["word_count"],
                 "source_url": script.get("source_url"),
-                "bullet_points": script.get("bullet_points", []),
                 "created_at": script["created_at"],
                 "ready_for_processing": True
             }

@@ -93,7 +93,7 @@ export function EntryMethodSelector({ onMethodSelected, isLoading = false }: Ent
                 </div>
                 <div>
                   <h5 className="font-medium text-sm">AI Analysis</h5>
-                  <p className="text-xs text-muted-foreground mt-1">Extract transcript & generate bullet points</p>
+                                      <p className="text-xs text-muted-foreground mt-1">Extract transcript & generate complete script</p>
                 </div>
               </div>
               <div className="flex items-start gap-3 p-3 rounded-lg bg-background/50 border">

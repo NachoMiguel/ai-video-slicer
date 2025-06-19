@@ -269,9 +269,9 @@ export function YouTubeInputPanel({ onUrlSubmitted, onBack, isLoading = false, e
         <CardContent className="text-blue-800 dark:text-blue-200">
           <ol className="list-decimal list-inside space-y-2">
             <li>We'll extract the video's transcript using AI</li>
-            <li>Generate structured bullet points from the content</li>
+                              <li>Generate a complete, flowing script from the content</li>
             <li>Open the interactive script builder</li>
-            <li>You can refine sections, adjust length, and customize the output</li>
+                          <li>You can highlight text to modify, adjust length, and customize the output</li>
             <li>When ready, proceed to video editing</li>
           </ol>
           <p className="mt-3 text-sm">

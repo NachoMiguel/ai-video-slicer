@@ -3,37 +3,71 @@ import { NextResponse } from 'next/server'
 export async function POST(request: Request) {
   try {
     const formData = await request.formData()
-    const files = formData.getAll('videos') as File[]
-    const prompt = formData.get('prompt') as string
+    const sessionId = formData.get('session_id') as string
+    const action = formData.get('action') as string
 
-    if (!files || files.length < 2) {
+    if (!sessionId) {
       return NextResponse.json(
-        { error: 'At least 2 videos are required' },
+        { error: 'Session ID is required' },
         { status: 400 }
       )
     }
 
-    if (!prompt) {
+    if (!action) {
       return NextResponse.json(
-        { error: 'A prompt is required' },
+        { error: 'Action is required' },
         { status: 400 }
       )
     }
 
-    // TODO: Implement video processing logic
-    // 1. Transcribe videos using Whisper
-    // 2. Detect scenes using PySceneDetect
-    // 3. Generate script using OpenAI/Anthropic
-    // 4. Reassemble video with FFmpeg/MoviePy
+    // Route to appropriate backend endpoint based on action
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000'
+    
+    let endpoint = ''
+    switch (action) {
+      case 'generate_full_script':
+        endpoint = '/api/script/generate-full-script'
+        break
+      case 'modify_text':
+        endpoint = '/api/script/modify-text'
+        break
+      case 'apply_modification':
+        endpoint = '/api/script/apply-modification'
+        break
+      case 'modify_bulk_text':
+        endpoint = '/api/script/modify-bulk-text'
+        break
+      case 'apply_bulk_modification':
+        endpoint = '/api/script/apply-bulk-modification'
+        break
+      default:
+        return NextResponse.json(
+          { error: 'Invalid action' },
+          { status: 400 }
+        )
+    }
 
-    return NextResponse.json({
-      message: 'Video processing started',
-      status: 'processing'
+    // Forward the request to the backend
+    const response = await fetch(`${backendUrl}${endpoint}`, {
+      method: 'POST',
+      body: formData
     })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      return NextResponse.json(
+        { error: errorData.detail || 'Backend request failed' },
+        { status: response.status }
+      )
+    }
+
+    const data = await response.json()
+    return NextResponse.json(data)
+
   } catch (error) {
-    console.error('Error processing videos:', error)
+    console.error('Error processing request:', error)
     return NextResponse.json(
-      { error: 'Failed to process videos' },
+      { error: 'Failed to process request' },
       { status: 500 }
     )
   }
