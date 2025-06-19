@@ -187,6 +187,36 @@ export function ChatInterface({
   const renderMessage = (message: ChatMessage) => {
     const isUser = message.type === 'user';
     const isSystem = message.type === 'system';
+    const isAssistant = message.type === 'assistant';
+    
+    // For assistant messages, check if this is a content generation response
+    // If it's a long response (likely script content), show a simple confirmation instead
+    if (isAssistant && message.content.length > 200 && !message.content.includes('Available commands:')) {
+      return (
+        <div
+          key={message.id}
+          className="flex gap-3 p-4 bg-background"
+        >
+          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 flex items-center justify-center">
+            <Bot className="h-4 w-4" />
+          </div>
+          
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm font-medium text-foreground">AI Assistant</span>
+              <span className="text-xs text-muted-foreground">
+                {message.timestamp.toLocaleTimeString()}
+              </span>
+              {getMessageStatusIcon(message)}
+            </div>
+            
+            <div className="text-sm text-muted-foreground">
+              {message.content.includes('✅') ? message.content : 'Content updated in script panel'}
+            </div>
+          </div>
+        </div>
+      );
+    }
     
     return (
       <div

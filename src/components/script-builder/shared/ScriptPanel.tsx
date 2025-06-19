@@ -4,25 +4,55 @@ import { Card, CardContent, CardHeader } from '../../ui/card';
 import { FileText, Copy, Download } from 'lucide-react';
 import { Button } from '../../ui/button';
 
+interface BulletPoint {
+  id: string;
+  title: string;
+  description: string;
+  target_length: number;
+  importance: string;
+  order: number;
+  key_points: string[];
+  emotional_tone: string;
+  engagement_strategy: string;
+}
+
 interface ScriptPanelProps {
   script: string;
   wordCount: number;
-  bulletPoints?: any[];
+  bulletPoints?: BulletPoint[];
   className?: string;
 }
 
 export function ScriptPanel({ script, wordCount, bulletPoints, className = '' }: ScriptPanelProps) {
   const handleCopyScript = async () => {
     try {
-      await navigator.clipboard.writeText(script);
+      let contentToCopy = script;
+      
+      // If no script yet but we have bullet points, copy the bullet points
+      if (!script && bulletPoints && bulletPoints.length > 0) {
+        contentToCopy = bulletPoints.map((point: BulletPoint, index: number) => 
+          `${index + 1}. ${point.title}\n${point.description}\n`
+        ).join('\n');
+      }
+      
+      await navigator.clipboard.writeText(contentToCopy);
       // You might want to add a toast notification here
     } catch (err) {
-      console.error('Failed to copy script:', err);
+      console.error('Failed to copy content:', err);
     }
   };
 
   const handleDownloadScript = () => {
-    const blob = new Blob([script], { type: 'text/plain' });
+    let contentToDownload = script;
+    
+    // If no script yet but we have bullet points, download the bullet points
+    if (!script && bulletPoints && bulletPoints.length > 0) {
+      contentToDownload = bulletPoints.map((point: BulletPoint, index: number) => 
+        `${index + 1}. ${point.title}\n${point.description}\n`
+      ).join('\n');
+    }
+    
+    const blob = new Blob([contentToDownload], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -42,14 +72,14 @@ export function ScriptPanel({ script, wordCount, bulletPoints, className = '' }:
             <h3 className="text-sm font-medium text-foreground">Script</h3>
           </div>
           <div className="flex items-center gap-2">
-            {script && (
+            {(script || (bulletPoints && bulletPoints.length > 0)) && (
               <>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleCopyScript}
                   className="h-8 w-8 p-0"
-                  title="Copy script"
+                  title={script ? "Copy script" : "Copy bullet points"}
                 >
                   <Copy className="h-4 w-4" />
                 </Button>
@@ -58,7 +88,7 @@ export function ScriptPanel({ script, wordCount, bulletPoints, className = '' }:
                   size="sm"
                   onClick={handleDownloadScript}
                   className="h-8 w-8 p-0"
-                  title="Download script"
+                  title={script ? "Download script" : "Download bullet points"}
                 >
                   <Download className="h-4 w-4" />
                 </Button>
@@ -81,46 +111,14 @@ export function ScriptPanel({ script, wordCount, bulletPoints, className = '' }:
           ) : (
             <div className="h-full overflow-y-auto">
               {bulletPoints && bulletPoints.length > 0 ? (
-                <div className="space-y-4">
-                  <div className="text-center py-4">
-                    <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground mb-2">
-                      Script sections ready for generation
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Use the chat to generate content for each section
-                    </p>
-                  </div>
-                  
-                  {/* Bullet Points Display */}
-                  <div className="space-y-2">
-                    {bulletPoints.map((point: any, index: number) => (
-                      <div key={point.id || index} className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg border">
-                        <div className="flex-shrink-0 w-6 h-6 bg-primary/10 text-primary rounded-full flex items-center justify-center text-xs font-medium mt-0.5">
-                          {index + 1}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-foreground">
-                            {point.title || `Section ${index + 1}`}
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            {point.description || 'No description'}
-                          </div>
-                          <div className="flex items-center gap-2 mt-2">
-                            <span className="text-xs text-muted-foreground">
-                              Target: {point.target_length || 2000} words
-                            </span>
-                            <span className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded">
-                              {point.emotional_tone || 'neutral'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  <div className="text-center text-xs text-muted-foreground bg-muted/30 rounded-lg p-3">
-                    💡 Use commands like "/generate section 1" to create content for each section
+                <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground bg-transparent border-none p-0">
+                    {bulletPoints.map((point: BulletPoint, index: number) => 
+                      `${index + 1}. ${point.title}\n${point.description}\n\n`
+                    ).join('')}
+                  </pre>
+                  <div className="text-xs text-muted-foreground mt-4 p-3 bg-muted/30 rounded">
+                    💡 Use commands like "start with point 1" to create content for each section
                   </div>
                 </div>
               ) : (
