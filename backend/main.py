@@ -6,6 +6,7 @@ import asyncio
 import logging
 import datetime
 import traceback
+import re
 from typing import List, Dict
 from fastapi import FastAPI, UploadFile, File, Form, WebSocket, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,19 +32,35 @@ from googleapiclient.discovery import build
 from PIL import Image
 import io
 import random
-from backend.elevenlabs_account_manager import (
-    ElevenLabsAccountManager,
-    chunk_script_into_paragraphs,
-    synthesize_chunks_with_account_switching,
-    verify_full_script_coverage,
-    concatenate_audio_files,
-    update_accounts_usage_from_dict
-)
-from backend.openai_account_manager import (
-    OpenAIAccountManager,
-    generate_with_account_switching,
-    update_accounts_usage_from_dict
-)
+try:
+    from backend.elevenlabs_account_manager import (
+        ElevenLabsAccountManager,
+        chunk_script_into_paragraphs,
+        synthesize_chunks_with_account_switching,
+        verify_full_script_coverage,
+        concatenate_audio_files,
+        update_accounts_usage_from_dict
+    )
+    from backend.openai_account_manager import (
+        OpenAIAccountManager,
+        generate_with_account_switching,
+        update_accounts_usage_from_dict
+    )
+except ImportError:
+    # When running from backend directory
+    from elevenlabs_account_manager import (
+        ElevenLabsAccountManager,
+        chunk_script_into_paragraphs,
+        synthesize_chunks_with_account_switching,
+        verify_full_script_coverage,
+        concatenate_audio_files,
+        update_accounts_usage_from_dict
+    )
+    from openai_account_manager import (
+        OpenAIAccountManager,
+        generate_with_account_switching,
+        update_accounts_usage_from_dict
+    )
 
 # Load environment variables from backend/.env file
 env_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -61,6 +78,22 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+def safe_str(text):
+    """Safely convert text to string with UTF-8 encoding"""
+    if text is None:
+        return ""
+    try:
+        # Convert to string first
+        text_str = str(text)
+        # Remove problematic characters that can't be encoded in charmap
+        import re
+        # Replace common problematic Unicode characters
+        text_str = re.sub(r'[^\x00-\x7F]', '?', text_str)
+        return text_str
+    except Exception as e:
+        print(f"[DEBUG] safe_str exception: {e}")
+        return "ENCODING_ERROR"
 
 # Advanced Assembly Configuration
 ADVANCED_ASSEMBLY_CONFIG = {
@@ -3828,16 +3861,29 @@ async def health_check_openai():
 # REMOVED: Testing mode endpoints - no automatic script generation
 
 # Add new imports for interactive script builder
-from backend.script_session_manager import (
-    session_manager, 
-    ScriptSession, 
-    EntryMethod, 
-    SessionPhase, 
-    SectionStatus,
-    BulletPoint,
-    ScriptSection,
-    ChatMessage
-)
+try:
+    from backend.script_session_manager import (
+        session_manager, 
+        ScriptSession, 
+        EntryMethod, 
+        SessionPhase, 
+        SectionStatus,
+        BulletPoint,
+        ScriptSection,
+        ChatMessage
+    )
+except ImportError:
+    # When running from backend directory
+    from script_session_manager import (
+        session_manager, 
+        ScriptSession, 
+        EntryMethod, 
+        SessionPhase, 
+        SectionStatus,
+        BulletPoint,
+        ScriptSection,
+        ChatMessage
+    )
 # Script analyzer removed - YouTube only workflow
 from fastapi import UploadFile
 
@@ -3960,6 +4006,7 @@ async def extract_youtube_transcript(
 ):
     """Extract transcript from YouTube video for interactive script building"""
     try:
+        print(f"[DEBUG] Starting transcript extraction for session {session_id}")
         session = session_manager.get_session(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -3967,7 +4014,8 @@ async def extract_youtube_transcript(
         if session.entry_method != EntryMethod.YOUTUBE:
             raise HTTPException(status_code=400, detail="Session not configured for YouTube entry method")
         
-        print(f"[DEBUG] Extracting YouTube transcript for session {session_id}")
+        print(f"[DEBUG] Session validated, extracting YouTube transcript for session {session_id}")
+        print(f"[DEBUG] YouTube URL: {youtube_url}")
         
         # Download and transcribe using existing logic
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3985,15 +4033,39 @@ async def extract_youtube_transcript(
             actual_audio_path = None
             
             # Download audio
+            print(f"[DEBUG] Starting yt-dlp extraction...")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                print(f"[DEBUG] Extracting video info...")
                 info = ydl.extract_info(youtube_url, download=False)
+                print(f"[DEBUG] Video info extracted successfully")
+                
                 video_title = info.get('title', 'Unknown Video')
+                print(f"[DEBUG] Raw video title type: {type(video_title)}")
+                print(f"[DEBUG] Raw video title length: {len(video_title) if video_title else 0}")
+                
                 # Clean title to avoid encoding issues
                 if video_title:
+                    print(f"[DEBUG] Cleaning video title...")
                     video_title = video_title.encode('utf-8', errors='ignore').decode('utf-8')
-                print(f"[DEBUG] Video title: {video_title[:50]}...")
+                    print(f"[DEBUG] Title cleaned successfully")
                 
+                print(f"[DEBUG] About to create safe title preview...")
+                try:
+                    safe_title_preview = safe_str(video_title)[:50] if video_title else "No title"
+                    print(f"[DEBUG] Safe title preview created successfully")
+                except Exception as e:
+                    print(f"[DEBUG] Error in safe_str: {e}")
+                    safe_title_preview = "Title encoding error"
+                
+                try:
+                    print(f"[DEBUG] Video title preview: {safe_title_preview}...")
+                    print(f"[DEBUG] Print statement completed successfully")
+                except Exception as e:
+                    print(f"[DEBUG] Error in print statement: {e}")
+                
+                print(f"[DEBUG] Starting audio download...")
                 ydl.download([youtube_url])
+                print(f"[DEBUG] Audio download completed")
                 
                 for file in os.listdir(temp_dir):
                     if file.startswith("audio."):
@@ -4004,41 +4076,57 @@ async def extract_youtube_transcript(
                     raise Exception("Downloaded audio file not found")
             
             # Transcribe with Whisper
+            print(f"[DEBUG] Starting Whisper transcription...")
             result = whisper_model.transcribe(actual_audio_path)
             transcript = result["text"]
+            print(f"[DEBUG] Whisper transcription completed")
             
-            print(f"[DEBUG] Transcription completed. Length: {len(transcript)} characters")
+            print(f"[DEBUG] Transcript length: {len(transcript)} characters")
         
-        # Update session with transcript data
+        # Update session with transcript data (using safe encoding)
+        print(f"[DEBUG] Updating session with transcript data...")
+        safe_title = safe_str(video_title) if video_title else 'Unknown Video'
+        print(f"[DEBUG] Safe title created: {len(safe_title)} chars")
+        
         session.youtube_url = youtube_url
-        session.video_title = video_title
+        session.video_title = safe_title
         session.transcript = transcript
         session.use_default_prompt = use_default_prompt
         session.custom_prompt = custom_prompt
         session.current_phase = SessionPhase.BUILDING
         
+        print(f"[DEBUG] Calling session_manager.update_session...")
         session_manager.update_session(session)
+        print(f"[DEBUG] Session updated successfully")
         
         # Add system message to chat history (with safe encoding)
-        safe_title = video_title.encode('utf-8', errors='ignore').decode('utf-8') if video_title else 'Unknown Video'
+        print(f"[DEBUG] Adding chat message...")
+        chat_message = f"Successfully extracted transcript from YouTube video: {safe_title}"
+        print(f"[DEBUG] Chat message created, length: {len(chat_message)}")
+        
         session_manager.add_chat_message(
             session_id,
             "system",
-            f"Successfully extracted transcript from YouTube video: {safe_title}",
+            chat_message,
             {"transcript_length": len(transcript), "video_title": safe_title}
         )
+        print(f"[DEBUG] Chat message added successfully")
         
-        return {
+        print(f"[DEBUG] Creating return response...")
+        response = {
             "status": "success",
             "video_title": safe_title,
             "transcript": transcript,
             "transcript_length": len(transcript),
             "current_phase": session.current_phase.value
         }
+        print(f"[DEBUG] Response created successfully")
+        return response
         
     except Exception as e:
-        print(f"[ERROR] YouTube transcript extraction failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Transcript extraction failed: {str(e)}")
+        error_msg = safe_str(e)
+        print(f"[ERROR] YouTube transcript extraction failed: {error_msg}")
+        raise HTTPException(status_code=500, detail=f"Transcript extraction failed: {error_msg}")
 
 # Upload script endpoint removed - YouTube only workflow
 
@@ -4180,8 +4268,11 @@ async def script_chat(
         response_content = ""
         response_metadata = {}
         
+        # Check for commands (both slash commands and natural language)
+        message_lower = message.lower()
+        
         if message.startswith('/'):
-            # Handle chat commands
+            # Handle formal slash commands
             command_parts = message.split(' ', 2)
             command = command_parts[0].lower()
             
@@ -4208,10 +4299,46 @@ async def script_chat(
 /generate section [number] - Generate a specific section
 /refine section [number] [instruction] - Refine an existing section  
 /wordcount - Show current word count
-/help - Show this help message"""
+/help - Show this help message
+
+Natural language commands:
+"start with point 1" or "generate section 1"
+"develop more point 2" or "expand section 2"
+"refine section 3 to be more engaging"
+"what's my word count?"
+"""
                 
             else:
                 response_content = f"Unknown command: {command}. Type /help for available commands."
+        
+        elif any(phrase in message_lower for phrase in ['start with point', 'generate section', 'begin with point', 'create section']):
+            # Natural language: "start with point 1", "generate section 2", etc.
+            import re
+            section_match = re.search(r'(?:point|section)\s+(\d+)', message_lower)
+            if section_match:
+                section_number = section_match.group(1)
+                response_content, response_metadata = await handle_generate_section_command(session, f"section {section_number}")
+            else:
+                response_content = "I understand you want to generate a section, but please specify which one. For example: 'start with point 1' or 'generate section 2'"
+        
+        elif any(phrase in message_lower for phrase in ['develop more', 'expand', 'refine', 'improve']):
+            # Natural language: "develop more point 1", "expand section 2", "refine section 3 to be more engaging"
+            import re
+            section_match = re.search(r'(?:point|section)\s+(\d+)', message_lower)
+            if section_match:
+                section_number = section_match.group(1)
+                # Extract instruction after the section number
+                instruction_match = re.search(r'(?:point|section)\s+\d+\s+(.+)', message_lower)
+                instruction = instruction_match.group(1) if instruction_match else "make it more engaging and detailed"
+                response_content, response_metadata = await handle_refine_section_command(session, f"section {section_number}", instruction)
+            else:
+                response_content = "I understand you want to refine a section, but please specify which one. For example: 'develop more point 1' or 'refine section 2 to be more engaging'"
+        
+        elif any(phrase in message_lower for phrase in ['word count', 'how many words', 'progress', 'status']):
+            # Natural language word count request
+            total_words = sum(section.word_count for section in session.sections)
+            response_content = f"📊 Current progress: {total_words:,} / {session.target_word_count:,} words ({session.completion_percentage:.1f}% complete)\n\nCompleted sections: {len([s for s in session.sections if s.status == SectionStatus.COMPLETED])}/{len(session.bullet_points)}"
+            response_metadata = {"total_words": total_words, "target_words": session.target_word_count}
         
         else:
             # Handle general chat message
@@ -4224,6 +4351,15 @@ async def script_chat(
             response_content,
             response_metadata
         )
+        
+        # Build complete script from all completed sections in bullet point order
+        completed_sections = [s for s in session.sections if s.status == SectionStatus.COMPLETED]
+        
+        # Sort sections by bullet point order
+        bullet_point_order = {bp.id: bp.order for bp in session.bullet_points}
+        completed_sections.sort(key=lambda x: bullet_point_order.get(x.bullet_point_id, 999))
+        
+        complete_script = "\n\n".join([section.content for section in completed_sections])
         
         return {
             "status": "success",
@@ -4242,6 +4378,12 @@ async def script_chat(
                 "total_word_count": session.total_word_count,
                 "completion_percentage": session.completion_percentage,
                 "current_phase": session.current_phase.value
+            },
+            "script_data": {
+                "current_script": complete_script,
+                "word_count": session.total_word_count,
+                "sections_completed": len(completed_sections),
+                "total_sections": len(session.bullet_points)
             }
         }
         
@@ -4565,6 +4707,173 @@ async def cleanup_old_sessions():
     except Exception as e:
         print(f"[ERROR] Session cleanup failed: {e}")
         raise HTTPException(status_code=500, detail=f"Session cleanup failed: {str(e)}")
+
+# ============================================================================
+# Script Storage Endpoints
+# ============================================================================
+
+# Script storage for save/load functionality
+try:
+    from script_storage import script_storage
+except ImportError:
+    # Try alternative import if running from different directory
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    from script_storage import script_storage
+
+@app.post("/api/scripts/save")
+async def save_script(
+    session_id: str = Form(...),
+    title: str = Form(None)
+):
+    """Save current script session to file storage"""
+    try:
+        session = session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Create script data from session
+        session_data = {
+            "id": session_id,
+            "entry_method": session.entry_method.value if session.entry_method else None,
+            "source_url": session.youtube_url,
+            "current_script": session.final_script or "",
+            "bullet_points": [
+                {
+                    "id": bp.id,
+                    "title": bp.title,
+                    "description": bp.description,
+                    "target_length": bp.target_length,
+                    "importance": bp.importance,
+                    "order": bp.order,
+                    "key_points": bp.key_points,
+                    "emotional_tone": bp.emotional_tone,
+                    "engagement_strategy": bp.engagement_strategy
+                }
+                for bp in session.bullet_points
+            ],
+            "word_count": session.total_word_count,
+            "target_word_count": session.target_word_count,
+            "sections_completed": len([s for s in session.sections if s.status.value == "completed"]),
+            "total_sections": len(session.bullet_points),
+            "messages": [
+                {
+                    "id": msg.id,
+                    "type": msg.type,
+                    "content": msg.content,
+                    "timestamp": msg.timestamp.isoformat(),
+                    "metadata": msg.metadata
+                }
+                for msg in session.chat_history
+            ],
+            "is_finalized": session.is_finalized
+        }
+        
+        # Use provided title or generate from session
+        if title:
+            session_data["title"] = title
+        elif session.video_title:
+            session_data["title"] = f"Script: {session.video_title}"
+        else:
+            session_data["title"] = f"Generated Script {session_id[:8]}"
+        
+        script_id = script_storage.save_script(session_data)
+        
+        return {
+            "status": "success",
+            "script_id": script_id,
+            "title": session_data["title"],
+            "word_count": session_data["word_count"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Failed to save script: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save script: {str(e)}")
+
+@app.get("/api/scripts/list")
+async def list_scripts():
+    """List all saved scripts"""
+    try:
+        scripts = script_storage.list_scripts()
+        return {
+            "status": "success",
+            "scripts": scripts,
+            "count": len(scripts)
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to list scripts: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list scripts: {str(e)}")
+
+@app.get("/api/scripts/{script_id}")
+async def get_script(script_id: str):
+    """Get a specific script by ID"""
+    try:
+        script = script_storage.load_script(script_id)
+        if not script:
+            raise HTTPException(status_code=404, detail="Script not found")
+        
+        return {
+            "status": "success",
+            "script": script
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Failed to get script: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get script: {str(e)}")
+
+@app.delete("/api/scripts/{script_id}")
+async def delete_script(script_id: str):
+    """Delete a script by ID"""
+    try:
+        success = script_storage.delete_script(script_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Script not found")
+        
+        return {
+            "status": "success",
+            "message": "Script deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Failed to delete script: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete script: {str(e)}")
+
+@app.post("/api/scripts/load")
+async def load_script_for_processing(script_id: str = Form(...)):
+    """Load a saved script for video processing (skip script phase)"""
+    try:
+        script = script_storage.load_script(script_id)
+        if not script:
+            raise HTTPException(status_code=404, detail="Script not found")
+        
+        # Return script data ready for video processing phase
+        return {
+            "status": "success",
+            "script": {
+                "id": script["id"],
+                "title": script["title"],
+                "script_text": script["script_text"],
+                "word_count": script["word_count"],
+                "source_url": script.get("source_url"),
+                "bullet_points": script.get("bullet_points", []),
+                "created_at": script["created_at"],
+                "ready_for_processing": True
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Failed to load script for processing: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load script: {str(e)}")
 
 # ============================================================================
 
