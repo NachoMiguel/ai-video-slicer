@@ -49,7 +49,7 @@ class ScriptSession:
     use_default_prompt: bool = True
     custom_prompt: Optional[str] = None
     
-    # Chat history
+    # Chat history - DORMANT: Kept for potential future chat features (unused in current single-panel design)
     chat_history: List[ChatMessage] = field(default_factory=list)
     
     # Session metadata
@@ -131,7 +131,7 @@ class ScriptSessionManager:
                     os.remove(file_path)
     
     def add_chat_message(self, session_id: str, message_type: str, content: str, metadata: Dict[str, Any] = None) -> ChatMessage:
-        """Add a chat message to a session"""
+        """Add a chat message to a session - DORMANT: Currently unused in single-panel design"""
         session = self.get_session(session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")

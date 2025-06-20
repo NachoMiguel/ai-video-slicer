@@ -531,6 +531,129 @@ whisper_model = whisper.load_model("base")
 # Automatic prompt loading removed - users provide their own prompts
 
 # Load prompts from file for interactive system
+async def process_transcript_chunks(chunks: List[str], base_prompt: str, client, video_title: str = "") -> str:
+    """
+    Process transcript chunks sequentially, maintaining narrative flow.
+    
+    Args:
+        chunks: List of transcript chunks to process
+        base_prompt: The base prompt template to use
+        client: OpenAI client instance
+        video_title: Video title for context
+        
+    Returns:
+        Complete processed script
+    """
+    processed_chunks = []
+    
+    for i, chunk in enumerate(chunks):
+        print(f"[DEBUG] Processing chunk {i+1}/{len(chunks)} ({len(chunk)} characters)")
+        
+        # Build context-aware prompt for this chunk
+        if i == 0:
+            # First chunk - set up the narrative
+            chunk_prompt = f"""
+            {base_prompt}
+            
+            CHUNK PROCESSING INSTRUCTIONS:
+            This is the FIRST part of a longer transcript. Start with a compelling hook and establish the narrative flow.
+            
+            Video Title: {video_title}
+            
+            Transcript Chunk 1/{len(chunks)}:
+            {chunk}
+            
+            Create an engaging opening that will flow naturally into subsequent parts. Write as continuous narrative text.
+            """
+        elif i == len(chunks) - 1:
+            # Last chunk - conclude the narrative
+            previous_context = processed_chunks[-1][-500:] if processed_chunks else ""
+            chunk_prompt = f"""
+            Continue and conclude this engaging script based on the following transcript chunk.
+            
+            CONTEXT FROM PREVIOUS SECTION:
+            ...{previous_context}
+            
+            CHUNK PROCESSING INSTRUCTIONS:
+            This is the FINAL part of the transcript. Bring the narrative to a satisfying conclusion.
+            Maintain the same tone and style established in previous sections.
+            
+            Final Transcript Chunk {i+1}/{len(chunks)}:
+            {chunk}
+            
+            Complete the script with a strong conclusion that ties everything together. Write as continuous narrative text.
+            """
+        else:
+            # Middle chunk - continue the narrative
+            previous_context = processed_chunks[-1][-500:] if processed_chunks else ""
+            chunk_prompt = f"""
+            Continue this engaging script based on the following transcript chunk.
+            
+            CONTEXT FROM PREVIOUS SECTION:
+            ...{previous_context}
+            
+            CHUNK PROCESSING INSTRUCTIONS:
+            This is part {i+1} of {len(chunks)} of the transcript. Continue the narrative flow naturally.
+            Maintain the same engaging tone and style established in previous sections.
+            Create smooth transitions and build anticipation for what's coming next.
+            
+            Transcript Chunk {i+1}/{len(chunks)}:
+            {chunk}
+            
+            Continue the script naturally from the previous section. Write as continuous narrative text.
+            """
+        
+        # Process this chunk
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": chunk_prompt}],
+                temperature=0.7,
+                max_tokens=4000  # Reasonable size per chunk
+            )
+            
+            chunk_result = response.choices[0].message.content
+            if chunk_result and chunk_result.strip():
+                processed_chunks.append(chunk_result.strip())
+                print(f"[DEBUG] Chunk {i+1} processed: {len(chunk_result)} characters")
+            else:
+                print(f"[WARNING] Chunk {i+1} returned empty result")
+                
+        except Exception as chunk_error:
+            print(f"[ERROR] Failed to process chunk {i+1}: {chunk_error}")
+            # Try with GPT-3.5 as fallback
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": chunk_prompt}],
+                    temperature=0.7,
+                    max_tokens=4000
+                )
+                chunk_result = response.choices[0].message.content
+                if chunk_result and chunk_result.strip():
+                    processed_chunks.append(chunk_result.strip())
+                    print(f"[DEBUG] Chunk {i+1} processed with GPT-3.5: {len(chunk_result)} characters")
+                else:
+                    print(f"[WARNING] Chunk {i+1} failed completely")
+            except Exception as fallback_error:
+                print(f"[ERROR] Chunk {i+1} failed with both models: {fallback_error}")
+    
+    # Combine all processed chunks
+    if not processed_chunks:
+        raise Exception("No chunks were successfully processed")
+    
+    # Join chunks with smooth transitions
+    full_script = ""
+    for i, chunk in enumerate(processed_chunks):
+        if i == 0:
+            full_script = chunk
+        else:
+            # Add a subtle transition between chunks if needed
+            full_script += " " + chunk
+    
+    print(f"[DEBUG] Combined script length: {len(full_script)} characters from {len(processed_chunks)} chunks")
+    return full_script
+
 def load_prompt_from_file(prompt_section: str = "Basic YouTube Content Analysis") -> str:
     """Load prompt from the docs/prompts.md file for interactive system."""
     try:
@@ -4245,9 +4368,172 @@ async def extract_youtube_transcript(
 
 # Upload script endpoint removed - YouTube only workflow
 
+def chunk_transcript_for_processing(content: str, chunk_size: int = 2000) -> List[str]:
+    """
+    Split a long transcript into manageable chunks for processing.
+    
+    Args:
+        content: The full transcript text
+        chunk_size: Target size for each chunk in words
+        
+    Returns:
+        List of text chunks with contextual overlap
+    """
+    words = content.split()
+    total_words = len(words)
+    
+    if total_words <= chunk_size:
+        return [content]  # No need to chunk
+    
+    chunks = []
+    overlap_size = 200  # Words to overlap between chunks for context
+    
+    start_idx = 0
+    while start_idx < total_words:
+        # Calculate end index for this chunk
+        end_idx = min(start_idx + chunk_size, total_words)
+        
+        # Extract chunk
+        chunk_words = words[start_idx:end_idx]
+        chunk_text = ' '.join(chunk_words)
+        
+        chunks.append(chunk_text)
+        
+        # Move start index, accounting for overlap
+        if end_idx >= total_words:
+            break  # We've reached the end
+        
+        start_idx = end_idx - overlap_size
+    
+    print(f"[DEBUG] Split {total_words} words into {len(chunks)} chunks")
+    return chunks
+
+async def process_transcript_chunks(chunks: List[str], base_prompt: str, client, video_title: str = "") -> str:
+    """
+    Process transcript chunks sequentially, maintaining narrative flow.
+    
+    Args:
+        chunks: List of transcript chunks to process
+        base_prompt: The base prompt template to use
+        client: OpenAI client instance
+        video_title: Video title for context
+        
+    Returns:
+        Complete processed script
+    """
+    processed_chunks = []
+    
+    for i, chunk in enumerate(chunks):
+        print(f"[DEBUG] Processing chunk {i+1}/{len(chunks)} ({len(chunk)} characters)")
+        
+        # Build context-aware prompt for this chunk
+        if i == 0:
+            # First chunk - set up the narrative
+            chunk_prompt = f"""
+            {base_prompt}
+            
+            CHUNK PROCESSING INSTRUCTIONS:
+            This is the FIRST part of a longer transcript. Start with a compelling hook and establish the narrative flow.
+            
+            Video Title: {video_title}
+            
+            Transcript Chunk 1/{len(chunks)}:
+            {chunk}
+            
+            Create an engaging opening that will flow naturally into subsequent parts. Write as continuous narrative text.
+            """
+        elif i == len(chunks) - 1:
+            # Last chunk - conclude the narrative
+            previous_context = processed_chunks[-1][-500:] if processed_chunks else ""
+            chunk_prompt = f"""
+            Continue and conclude this engaging script based on the following transcript chunk.
+            
+            CONTEXT FROM PREVIOUS SECTION:
+            ...{previous_context}
+            
+            CHUNK PROCESSING INSTRUCTIONS:
+            This is the FINAL part of the transcript. Bring the narrative to a satisfying conclusion.
+            Maintain the same tone and style established in previous sections.
+            
+            Final Transcript Chunk {i+1}/{len(chunks)}:
+            {chunk}
+            
+            Complete the script with a strong conclusion that ties everything together. Write as continuous narrative text.
+            """
+        else:
+            # Middle chunk - continue the narrative
+            previous_context = processed_chunks[-1][-500:] if processed_chunks else ""
+            chunk_prompt = f"""
+            Continue this engaging script based on the following transcript chunk.
+            
+            CONTEXT FROM PREVIOUS SECTION:
+            ...{previous_context}
+            
+            CHUNK PROCESSING INSTRUCTIONS:
+            This is part {i+1} of {len(chunks)} of the transcript. Continue the narrative flow naturally.
+            Maintain the same engaging tone and style established in previous sections.
+            Create smooth transitions and build anticipation for what's coming next.
+            
+            Transcript Chunk {i+1}/{len(chunks)}:
+            {chunk}
+            
+            Continue the script naturally from the previous section. Write as continuous narrative text.
+            """
+        
+        # Process this chunk
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": chunk_prompt}],
+                temperature=0.7,
+                max_tokens=4000  # Reasonable size per chunk
+            )
+            
+            chunk_result = response.choices[0].message.content
+            if chunk_result and chunk_result.strip():
+                processed_chunks.append(chunk_result.strip())
+                print(f"[DEBUG] Chunk {i+1} processed: {len(chunk_result)} characters")
+            else:
+                print(f"[WARNING] Chunk {i+1} returned empty result")
+                
+        except Exception as chunk_error:
+            print(f"[ERROR] Failed to process chunk {i+1}: {chunk_error}")
+            # Try with GPT-3.5 as fallback
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": chunk_prompt}],
+                    temperature=0.7,
+                    max_tokens=4000
+                )
+                chunk_result = response.choices[0].message.content
+                if chunk_result and chunk_result.strip():
+                    processed_chunks.append(chunk_result.strip())
+                    print(f"[DEBUG] Chunk {i+1} processed with GPT-3.5: {len(chunk_result)} characters")
+                else:
+                    print(f"[WARNING] Chunk {i+1} failed completely")
+            except Exception as fallback_error:
+                print(f"[ERROR] Chunk {i+1} failed with both models: {fallback_error}")
+    
+    # Combine all processed chunks
+    if not processed_chunks:
+        raise Exception("No chunks were successfully processed")
+    
+    # Join chunks with smooth transitions
+    full_script = ""
+    for i, chunk in enumerate(processed_chunks):
+        if i == 0:
+            full_script = chunk
+        else:
+            # Add a subtle transition between chunks if needed
+            full_script += " " + chunk
+    
+    print(f"[DEBUG] Combined script length: {len(full_script)} characters from {len(processed_chunks)} chunks")
+    return full_script
+
 @app.post("/api/script/generate-full-script")
 async def generate_full_script(session_id: str = Form(...)):
-    """Generate a complete script from YouTube transcript"""
+    """Generate a complete script from YouTube transcript using chunked processing"""
     try:
         session = session_manager.get_session(session_id)
         if not session:
@@ -4263,23 +4549,56 @@ async def generate_full_script(session_id: str = Form(...)):
             raise HTTPException(status_code=400, detail="No transcript available")
         
         content = session.transcript
-        print(f"[DEBUG] Original transcript length: {len(content)} characters")
+        print(f"[DEBUG] Original transcript length: {len(content)} characters ({len(content.split())} words)")
         print(f"[DEBUG] Transcript preview: {content[:200]}...")
         
-        # Use prompts from prompts.md file for default, or user custom prompt
+        # Load the prompt from file
+        base_prompt = None
         if session.use_default_prompt:
-            # Try to load the correct prompt for full script generation
             try:
-                prompt = load_prompt_from_file("Advanced YouTube Content Script Generation")
-                print(f"[DEBUG] Loaded Advanced YouTube Content Script Generation prompt")
-            except:
-                print(f"[DEBUG] Failed to load Advanced YouTube Content Script Generation, using built-in prompt")
-                # Use our built-in full script generation prompt instead of the fallback
-                prompt = None  # Will use the built-in prompt below
-        else:
-            prompt = session.custom_prompt
+                base_prompt = load_prompt_from_file("Advanced YouTube Content Script Generation")
+                print(f"[DEBUG] Loaded Advanced YouTube Content Script Generation prompt ({len(base_prompt)} chars)")
+            except Exception as prompt_error:
+                print(f"[DEBUG] Failed to load prompt from file: {prompt_error}")
         
-        # Generate full script using OpenAI
+        if not base_prompt:
+            if session.custom_prompt:
+                base_prompt = session.custom_prompt
+            else:
+                # Use built-in comprehensive prompt
+                base_prompt = """
+                Transform this YouTube transcript into a high-retention, engaging script that keeps viewers hooked from start to finish.
+
+                CONTENT TRANSFORMATION GOALS:
+                1. Create a flowing narrative that feels like a compelling story, not a transcript summary
+                2. Use the transcript as raw material but elevate it with engaging storytelling techniques
+                3. Preserve ALL information from the original transcript while making it more engaging
+                4. Maintain natural, conversational flow throughout
+
+                ENGAGEMENT TECHNIQUES TO INCLUDE:
+                - Open with a powerful hook that immediately grabs attention
+                - Use smooth transitions that build anticipation for what's coming next
+                - Include mysterious or intriguing elements that create curiosity gaps
+                - Add emotional moments and relatable human experiences
+                - Use varied sentence lengths and rhythms to maintain interest
+                - Include strategic pauses and emphasis points for dramatic effect
+
+                STRUCTURE REQUIREMENTS:
+                - Strong opening that sets up the entire narrative
+                - Progressive revelation of information that builds engagement
+                - Multiple "mini-climaxes" throughout to maintain attention
+                - No section breaks, headers, or bullet points - pure flowing narrative
+
+                TONE AND STYLE:
+                - Conversational and engaging, like telling a story to a friend
+                - Slightly mysterious and intriguing where appropriate
+                - Authentic and relatable, avoiding robotic or formulaic language
+                - Dynamic pacing that speeds up and slows down for dramatic effect
+
+                CRITICAL: Preserve ALL information from the original transcript. The output should maintain the substance and length of the original while being more engaging.
+                """
+        
+        # Set up OpenAI client
         api_key = os.getenv("OPENAI_API_KEY_1") or os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise HTTPException(status_code=500, detail="OpenAI API key not configured")
@@ -4287,120 +4606,70 @@ async def generate_full_script(session_id: str = Form(...)):
         from backend.openai_account_manager import create_openai_client
         client = create_openai_client(api_key)
         
-        # Use the loaded prompt or build our own
-        if prompt:
-            # Use the prompt from file, but customize it for this specific transcript
-            script_prompt = f"""
-            {prompt}
+        # Determine if we need chunked processing
+        word_count = len(content.split())
+        
+        if word_count > 1500:  # Use chunked processing for longer transcripts
+            print(f"[DEBUG] Using chunked processing for {word_count} words")
             
-            CRITICAL REQUIREMENTS FOR THIS TRANSCRIPT:
-            - Original transcript length: {len(content)} characters
-            - Target output length: {len(content)*0.8:.0f}-{len(content)*1.2:.0f} characters
-            - Preserve ALL information from the original transcript
-            - Video title: {session.video_title}
+            # Split transcript into chunks
+            chunks = chunk_transcript_for_processing(content, chunk_size=1500)
             
-            Original Transcript:
-            {content}
-            """
+            # Process chunks sequentially
+            full_script = await process_transcript_chunks(
+                chunks, 
+                base_prompt, 
+                client, 
+                session.video_title or "YouTube Video"
+            )
+            
         else:
-            # Use our built-in comprehensive prompt
+            # Use single-pass processing for shorter transcripts
+            print(f"[DEBUG] Using single-pass processing for {word_count} words")
+            
             script_prompt = f"""
-            Transform this YouTube transcript into a compelling, coherent script for content creation.
-
-            CRITICAL: Preserve ALL information from the original transcript while making it more engaging. The output should be similar in length to the input transcript ({len(content)} characters).
-
-            Create a single, flowing narrative that:
-            - Preserves ALL key information, details, and context from the original transcript
-            - Transforms the content into engaging, compelling narrative without losing any substance
-            - Has natural transitions between topics and ideas
-            - Maintains viewer interest throughout with hooks and engaging language
-            - Uses conversational, engaging tone that feels natural
-            - Avoids repetitive or robotic phrasing
-            - Incorporates storytelling techniques for better retention
-            - Maintains similar length to the original transcript (aim for {len(content)*0.8:.0f}-{len(content)*1.2:.0f} characters)
-            - Write as if you're telling an engaging story to a friend
-            - Include emotional moments and relatable human experiences
-            - Use varied sentence lengths and rhythms to maintain interest
-            - Create curiosity gaps and build anticipation throughout
-
-            Video Title: {session.video_title}
+            {base_prompt}
+            
+            Video Title: {session.video_title or "YouTube Video"}
             Original Transcript Length: {len(content)} characters
             
             Original Transcript:
             {content}
-
-            Write the complete script as continuous flowing text. Do not use bullet points, section headers, or fragmented content. Create one cohesive narrative that preserves all the original information while making it more engaging and readable. Your output should be approximately {len(content)*0.9:.0f} characters long.
+            
+            Transform this transcript into an engaging, complete script. Preserve all information while making it more compelling and readable.
             """
+            
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4",
+                    messages=[{"role": "user", "content": script_prompt}],
+                    temperature=0.7,
+                    max_tokens=16000
+                )
+                full_script = response.choices[0].message.content
+                print(f"[DEBUG] Single-pass GPT-4 generation successful")
+            except Exception as gpt4_error:
+                print(f"[DEBUG] GPT-4 failed ({gpt4_error}), falling back to GPT-3.5-turbo...")
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": script_prompt}],
+                    temperature=0.7,
+                    max_tokens=16000
+                )
+                full_script = response.choices[0].message.content
         
-        print(f"[DEBUG] Script prompt length: {len(script_prompt)} characters")
-        
-        # Try GPT-4 first for better instruction following, fallback to GPT-3.5
-        try:
-            print(f"[DEBUG] Attempting script generation with GPT-4...")
-            response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": script_prompt}],
-                temperature=0.7,
-                max_tokens=16000  # Increased for longer responses - preserve full transcript content
-            )
-            print(f"[DEBUG] GPT-4 generation successful")
-        except Exception as gpt4_error:
-            print(f"[DEBUG] GPT-4 failed ({gpt4_error}), falling back to GPT-3.5-turbo...")
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": script_prompt}],
-                temperature=0.7,
-                max_tokens=16000  # Increased for longer responses - preserve full transcript content
-            )
-        
-        # Get the response content
-        full_script = response.choices[0].message.content
         print(f"[DEBUG] Generated script length: {len(full_script) if full_script else 0} characters")
         print(f"[DEBUG] Generated script preview: {full_script[:200] if full_script else 'None'}...")
-        print(f"[DEBUG] OpenAI response usage: {response.usage if hasattr(response, 'usage') else 'No usage info'}")
         
         if not full_script or full_script.strip() == "":
-            raise Exception("OpenAI returned empty script")
+            raise Exception("Script generation returned empty result")
         
-        # Validate script length - should be similar to original transcript
+        # Calculate length preservation
         original_length = len(content)
-        min_expected = int(original_length * 0.6)  # At least 60% of original
+        script_length = len(full_script)
+        preservation_ratio = (script_length / original_length) * 100 if original_length > 0 else 0
         
-        if len(full_script) < min_expected:
-            print(f"[WARNING] Generated script is much shorter than expected ({len(full_script)} chars vs {original_length} original), attempting to expand...")
-            print(f"[DEBUG] Minimum expected length: {min_expected} characters ({original_length * 0.6:.0f})")
-            
-            expand_prompt = f"""
-            The following script is too short compared to the original transcript. The original had {original_length} characters, but the script only has {len(full_script)} characters.
-            
-            Expand it to preserve more of the original content by:
-            - Adding back important details that may have been omitted
-            - Including more context and explanations from the original transcript
-            - Expanding on key points with additional context from the source material
-            - Adding smooth transitions and elaborative content
-            - Maintaining the same tone and flow
-            - Target length: {int(original_length * 0.8)}-{int(original_length * 1.0)} characters
-            
-            Original Transcript Reference (for context):
-            {content[:2000]}...
-            
-            Current script to expand:
-            {full_script}
-            
-            Provide the expanded version that better preserves the original content while maintaining engaging flow.
-            """
-            
-            expand_response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": expand_prompt}],
-                temperature=0.7,
-                max_tokens=16000
-            )
-            
-            expanded_script = expand_response.choices[0].message.content
-            if expanded_script and len(expanded_script) > len(full_script):
-                full_script = expanded_script
-                print(f"[DEBUG] Expanded script to {len(full_script)} characters")
+        print(f"[DEBUG] Length preservation: {preservation_ratio:.1f}% ({script_length}/{original_length} chars)")
         
         # Update session with full script
         session.final_script = full_script
@@ -4413,21 +4682,28 @@ async def generate_full_script(session_id: str = Form(...)):
         session_manager.add_chat_message(
             session_id,
             "ai",
-            f"Generated complete script with {len(full_script)} characters. You can now review and modify the script using the highlight-to-edit features.",
-            {"script_length": len(full_script), "word_count": len(full_script.split())}
+            f"Generated complete script with {len(full_script)} characters ({preservation_ratio:.1f}% length preservation). You can now review and modify the script using the highlight-to-edit features.",
+            {
+                "script_length": len(full_script), 
+                "word_count": len(full_script.split()),
+                "preservation_ratio": preservation_ratio,
+                "processing_method": "chunked" if word_count > 1500 else "single-pass"
+            }
         )
         
         return {
             "status": "success",
             "script": full_script,
             "word_count": len(full_script.split()),
-            "character_count": len(full_script)
+            "character_count": len(full_script),
+            "preservation_ratio": preservation_ratio
         }
         
     except HTTPException:
         raise
     except Exception as e:
         print(f"[ERROR] Full script generation failed: {e}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Script generation failed: {str(e)}")
 
 @app.post("/api/script/modify-text")
@@ -4833,7 +5109,14 @@ async def apply_bulk_text_modification(
         print(f"[ERROR] Apply bulk modification failed: {e}")
         raise HTTPException(status_code=500, detail=f"Apply bulk modification failed: {str(e)}")
 
-# Legacy bullet points endpoint removed - use generate-full-script instead
+# =============================================================================
+# CHAT FUNCTIONALITY - DORMANT (December 19, 2024)
+# =============================================================================
+# NOTE: Chat functionality is currently unused after single-panel UI redesign.
+# Frontend no longer uses ChatInterface component or calls /api/script/chat.
+# This code is kept intact for potential future chat features.
+# The system now uses direct script generation without interactive chat.
+# =============================================================================
 
 @app.post("/api/script/chat")
 async def script_chat(
