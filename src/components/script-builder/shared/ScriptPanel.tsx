@@ -532,8 +532,8 @@ export function ScriptPanel({
   ];
 
   return (
-    <div className="relative">
-      <Card className={`h-full flex flex-col ${className}`}>
+    <div className="relative w-full min-w-0">
+      <Card className={`h-full flex flex-col w-full min-w-0 ${className}`}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -585,7 +585,7 @@ export function ScriptPanel({
                     >
                       ?
                     </Button>
-                    <div className="absolute left-0 top-6 z-50 hidden group-hover:block w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 text-xs">
+                    <div className="absolute left-0 top-6 z-[100] hidden group-hover:block w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 text-xs">
                       <h4 className="font-medium mb-2">How to modify text:</h4>
                       <div className="space-y-2">
                         <div>
@@ -687,26 +687,26 @@ export function ScriptPanel({
           </div>
         </CardHeader>
         
-        <CardContent className="flex-1 pt-0" onClick={handleClickOutside}>
-          <div className="h-full">
+        <CardContent className="flex-1 pt-0 px-6 pb-6 min-w-0 max-w-full overflow-hidden" onClick={handleClickOutside}>
+          <div className="h-full w-full min-w-0 max-w-full overflow-hidden">
             {script ? (
-              <div className="h-full overflow-y-auto">
+              <div className="h-full w-full overflow-y-auto overflow-x-hidden min-w-0 max-w-full">
                 <div 
                   ref={scriptRef}
-                  className="prose prose-sm dark:prose-invert max-w-none"
+                  className="w-full min-w-0 max-w-full overflow-hidden"
                   onMouseUp={handleTextSelection}
                   style={{ userSelect: isModificationMode ? 'text' : 'auto' }}
                 >
-                  <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground bg-transparent border-none p-0 cursor-text">
+                  <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground bg-transparent border-none p-0 cursor-text w-full min-w-0 max-w-full break-words overflow-wrap-anywhere word-break-break-all" style={{ maxWidth: '100%', wordBreak: 'break-all' }}>
                     {script}
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="h-full overflow-y-auto">
+              <div className="h-full w-full overflow-y-auto overflow-x-hidden min-w-0 max-w-full">
                 {bulletPoints && bulletPoints.length > 0 ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground bg-transparent border-none p-0">
+                  <div className="w-full min-w-0 max-w-full overflow-hidden">
+                    <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground bg-transparent border-none p-0 w-full min-w-0 max-w-full break-words overflow-wrap-anywhere word-break-break-all" style={{ maxWidth: '100%', wordBreak: 'break-all' }}>
                       {bulletPoints.map((point: any, index: number) => 
                         `${index + 1}. ${point.title}\n${point.description}\n\n`
                       ).join('')}
@@ -737,7 +737,7 @@ export function ScriptPanel({
       {/* Modification Popup */}
       {modificationPopup.visible && modificationPopup.selection && (
         <div
-          className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-2 animate-in fade-in-0 zoom-in-95 duration-200"
+          className="fixed z-[9997] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-2 animate-in fade-in-0 zoom-in-95 duration-200"
           style={{
             left: `${modificationPopup.x}px`,
             top: `${modificationPopup.y}px`,
@@ -774,7 +774,7 @@ export function ScriptPanel({
 
       {/* Modification Preview Modal */}
       {modificationPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 animate-in fade-in-0 duration-200">
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in-0 duration-200">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
             <div className="p-4 border-b border-gray-200 dark:border-gray-700">
               <h3 className="text-lg font-semibold text-foreground">
@@ -881,7 +881,7 @@ export function ScriptPanel({
 
       {/* Error Toast */}
       {modificationError && (
-        <div className="fixed bottom-4 right-4 z-50 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg animate-in slide-in-from-bottom-2 duration-300">
+        <div className="fixed bottom-4 right-4 z-[9996] bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg animate-in slide-in-from-bottom-2 duration-300">
           <div className="flex items-center gap-2">
             <span className="text-sm">{modificationError}</span>
             <Button

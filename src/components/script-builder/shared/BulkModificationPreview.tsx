@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '../../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../ui/card';
 import { 
@@ -46,6 +46,29 @@ export function BulkModificationPreview({
   );
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
 
+  // Lock body scroll when modal is visible
+  useEffect(() => {
+    if (visible) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = 'unset';
+      };
+    }
+  }, [visible]);
+
+  // Handle escape key
+  useEffect(() => {
+    if (visible) {
+      const handleEscape = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          onCancel();
+        }
+      };
+      document.addEventListener('keydown', handleEscape);
+      return () => document.removeEventListener('keydown', handleEscape);
+    }
+  }, [visible, onCancel]);
+
   if (!visible) return null;
 
   const handleToggleSelection = (index: number) => {
@@ -82,6 +105,12 @@ export function BulkModificationPreview({
     onApply(selectedResultsArray);
   };
 
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onCancel();
+    }
+  };
+
   const successfulResults = results.filter(r => r.success);
   const failedResults = results.filter(r => !r.success);
   const selectedCount = selectedResults.size;
@@ -103,8 +132,11 @@ export function BulkModificationPreview({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 animate-in fade-in-0 duration-200">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+    <div 
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in-0 duration-200" 
+      onClick={handleBackdropClick}
+    >
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-700">
         <CardHeader className="flex-shrink-0 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg font-semibold text-foreground">

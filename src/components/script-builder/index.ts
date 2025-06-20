@@ -5,8 +5,7 @@ export { ScriptBuilder } from './ScriptBuilder';
 export { EntryMethodSelector } from './entry/EntryMethodSelector';
 export { YouTubeInputPanel } from './entry/YouTubeInputPanel';
 
-// Interactive components
-export { ChatInterface } from './interactive/ChatInterface';
+// Interactive components - ChatInterface removed (unused after single-panel redesign)
 
 // Shared components
 export { ScriptAnalysisDisplay } from './shared/ScriptAnalysisDisplay';
