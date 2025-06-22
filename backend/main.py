@@ -8,7 +8,7 @@ import datetime
 import traceback
 import re
 from typing import List, Dict
-from fastapi import FastAPI, UploadFile, File, Form, WebSocket, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, WebSocket, HTTPException, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from scenedetect import detect, ContentDetector
 from moviepy.editor import VideoFileClip, concatenate_videoclips, TextClip, CompositeVideoClip, AudioFileClip
@@ -168,29 +168,35 @@ class PhaseTimeoutError(AdvancedAssemblyError):
 def log_phase_start(phase_name: str, **kwargs):
     """Log the start of a processing phase"""
     try:
-        logger.info(f"🚀 Starting {phase_name}")
+        logger.info(f"[START] Starting {phase_name}")
     except UnicodeEncodeError:
         logger.info(f"[START] {phase_name}")
     if kwargs:
-        logger.info(f"   Parameters: {kwargs}")
+        # Convert kwargs to safe string to avoid unicode issues
+        safe_kwargs = {k: safe_str(str(v)) for k, v in kwargs.items()}
+        logger.info(f"   Parameters: {safe_kwargs}")
 
 def log_phase_success(phase_name: str, **kwargs):
     """Log successful completion of a processing phase"""
     try:
-        logger.info(f"✅ {phase_name} completed successfully")
+        logger.info(f"[SUCCESS] {phase_name} completed successfully")
     except UnicodeEncodeError:
         logger.info(f"[SUCCESS] {phase_name} completed successfully")
     if kwargs:
-        logger.info(f"   Results: {kwargs}")
+        # Convert kwargs to safe string to avoid unicode issues
+        safe_kwargs = {k: safe_str(str(v)) for k, v in kwargs.items()}
+        logger.info(f"   Results: {safe_kwargs}")
 
 def log_phase_error(phase_name: str, error: Exception, **kwargs):
     """Log phase error with full context"""
     try:
-        logger.error(f"❌ {phase_name} failed: {str(error)}")
+        logger.error(f"[ERROR] {phase_name} failed: {safe_str(str(error))}")
     except UnicodeEncodeError:
-        logger.error(f"[ERROR] {phase_name} failed: {str(error)}")
+        logger.error(f"[ERROR] {phase_name} failed: {safe_str(str(error))}")
     if kwargs:
-        logger.error(f"   Context: {kwargs}")
+        # Convert kwargs to safe string to avoid unicode issues
+        safe_kwargs = {k: safe_str(str(v)) for k, v in kwargs.items()}
+        logger.error(f"   Context: {safe_kwargs}")
     logger.error(f"   Traceback: {traceback.format_exc()}")
 
 def safe_execute_phase(phase_name: str, phase_function, timeout_seconds: int = None, **kwargs):
@@ -233,11 +239,13 @@ def create_error_metadata(error: Exception, phase: str = "unknown") -> Dict:
 def log_assembly_stats(stats: Dict, assembly_type: str):
     """Log assembly statistics for monitoring"""
     try:
-        logger.info(f"📊 Assembly Statistics ({assembly_type}):")
+        logger.info(f"[STATS] Assembly Statistics ({assembly_type}):")
     except UnicodeEncodeError:
         logger.info(f"[STATS] Assembly Statistics ({assembly_type}):")
     for key, value in stats.items():
-        logger.info(f"   {key}: {value}")
+        safe_key = safe_str(str(key))
+        safe_value = safe_str(str(value))
+        logger.info(f"   {safe_key}: {safe_value}")
 
 # Script Management Functions Removed - No Automatic Script Generation
 
@@ -252,14 +260,17 @@ app.add_middleware(
 
 # Configure OpenAI
 try:
-    api_key = os.getenv("OPENAI_API_KEY")
+    # Try to get API key from multiple sources
+    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY_1")
     print(f"[DEBUG] API key found: {bool(api_key)}")
     print(f"[DEBUG] API key length: {len(api_key) if api_key else 0}")
+    if not os.getenv("OPENAI_API_KEY") and os.getenv("OPENAI_API_KEY_1"):
+        print("[DEBUG] Using OPENAI_API_KEY_1 as fallback for character extraction")
     
-    # Skip legacy client initialization - we use account management system instead
-    print("[INFO] Skipping legacy OpenAI client initialization - using account management system")
+    # Initialize OpenAI client for character extraction and other features
+    print("[INFO] Initializing OpenAI client for character extraction")
     client = None
-    if False:  # Disable legacy client
+    if True:  # Enable client for character extraction
         print("[DEBUG] Attempting to initialize OpenAI client...")
         print(f"[DEBUG] OpenAI version: {openai.__version__}")
         
@@ -362,12 +373,21 @@ MAX_FACES_PER_IMAGE = int(os.getenv("MAX_FACES_PER_IMAGE", "3"))  # Prefer fewer
 def get_google_search_service():
     """Initialize and return Google Custom Search service."""
     try:
+        print(f"[DEBUG] get_google_search_service called")
+        print(f"[DEBUG] GOOGLE_API_KEY in function: {bool(GOOGLE_API_KEY)}")
+        print(f"[DEBUG] GOOGLE_CSE_ID in function: {bool(GOOGLE_CSE_ID)}")
         if not GOOGLE_API_KEY or not GOOGLE_CSE_ID:
             print("Warning: Google API key or CSE ID not found in environment variables")
+            print(f"[DEBUG] GOOGLE_API_KEY value: {GOOGLE_API_KEY}")
+            print(f"[DEBUG] GOOGLE_CSE_ID value: {GOOGLE_CSE_ID}")
             return None
-        return build("customsearch", "v1", developerKey=GOOGLE_API_KEY)
+        print("[DEBUG] Attempting to build Google Custom Search service...")
+        service = build("customsearch", "v1", developerKey=GOOGLE_API_KEY)
+        print("[DEBUG] Google Custom Search service created successfully")
+        return service
     except Exception as e:
         print(f"Warning: Could not initialize Google Custom Search service: {e}")
+        print(f"[DEBUG] Exception details: {type(e).__name__}: {str(e)}")
         return None
 
 def detect_faces_in_image(image_path: str) -> Dict[str, any]:
@@ -523,7 +543,7 @@ def detect_faces_in_image(image_path: str) -> Dict[str, any]:
         }
 
 # Maximum file size (100MB)
-MAX_FILE_SIZE = 100 * 1024 * 1024
+MAX_FILE_SIZE = 500 * 1024 * 1024
 
 # Load Whisper model
 whisper_model = whisper.load_model("base")
@@ -799,40 +819,16 @@ def extract_characters_fallback(script: str) -> Dict[str, List[str]]:
     Uses simple text analysis to find potential character names.
     """
     try:
-        # Simple fallback - look for common patterns
         import re
         
         characters = {}
         
-        # Look for specific age + name patterns
-        age_name_patterns = [
-            r"young\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)",  # "young Robert De Niro"
-            r"old\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)",    # "old Robert De Niro"
-            r"middle-aged\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)"  # "middle-aged Al Pacino"
-        ]
-        
-        # Extract characters with age context
-        for pattern in age_name_patterns:
-            matches = re.findall(pattern, script, re.IGNORECASE)
-            for match in matches:
-                name = match.strip()
-                # Determine age context
-                if "young" in script.lower().split():
-                    age_context = "young"
-                elif "old" in script.lower().split():
-                    age_context = "old" 
-                elif "middle-aged" in script.lower().split():
-                    age_context = "middle-aged"
-                else:
-                    age_context = "any"
-                    
-                if name not in characters:
-                    characters[name] = []
-                if age_context not in characters[name]:
-                    characters[name].append(age_context)
-        
-                 # Look for common celebrity names (fallback)
+        # Look for specific celebrity names that are commonly mentioned
         celebrity_patterns = [
+            r"\b(Jean-Claude Van Damme)\b",
+            r"\b(Steven Seagal)\b",
+            r"\b(Van Damme)\b",
+            r"\b(Seagal)\b",
             r"\b(Robert De Niro)\b",
             r"\b(Al Pacino)\b",
             r"\b(Leonardo DiCaprio)\b",
@@ -840,13 +836,17 @@ def extract_characters_fallback(script: str) -> Dict[str, List[str]]:
             r"\b(Morgan Freeman)\b",
             r"\b(Brad Pitt)\b",
             r"\b(Johnny Depp)\b",
-            r"\b(Will Smith)\b"
+            r"\b(Will Smith)\b",
+            r"\b(Arnold Schwarzenegger)\b",
+            r"\b(Bruce Willis)\b",
+            r"\b(Sylvester Stallone)\b"
         ]
         
         for pattern in celebrity_patterns:
             matches = re.findall(pattern, script, re.IGNORECASE)
             for match in matches:
                 name = match.strip()
+                
                 # Determine age context from surrounding text
                 contexts = []
                 
@@ -860,12 +860,19 @@ def extract_characters_fallback(script: str) -> Dict[str, List[str]]:
                 
                 # If no specific age context found, check general patterns
                 if not contexts:
-                    if re.search(rf"{re.escape(name)}.*(?:young|early|1970s|1980s)", script, re.IGNORECASE):
+                    # Look for time periods that suggest age
+                    if re.search(rf"{re.escape(name)}.{{0,100}}(?:young|early|1970s|1980s|childhood|teen)", script, re.IGNORECASE):
                         contexts.append("young")
-                    if re.search(rf"{re.escape(name)}.*(?:old|recent|later|2010s|2020s)", script, re.IGNORECASE):
+                    if re.search(rf"{re.escape(name)}.{{0,100}}(?:recent|later|2010s|2020s|now|today)", script, re.IGNORECASE):
                         contexts.append("old")
-                    if re.search(rf"{re.escape(name)}.*(?:middle|1990s|2000s)", script, re.IGNORECASE):
+                    if re.search(rf"{re.escape(name)}.{{0,100}}(?:1990s|2000s|prime|peak)", script, re.IGNORECASE):
                         contexts.append("middle-aged")
+                
+                # Normalize common name variations
+                if name.lower() in ["van damme"]:
+                    name = "Jean-Claude Van Damme"
+                elif name.lower() in ["seagal"]:
+                    name = "Steven Seagal"
                 
                 # Add to characters dictionary
                 if name not in characters:
@@ -965,7 +972,7 @@ def download_image(url: str, file_path: str) -> bool:
                 face_result = detect_faces_in_image(file_path)
                 
                 if not face_result['has_faces']:
-                    print(f"✗ No faces detected in image from {url[:50]}...")
+                    print(f"[REJECT] No faces detected in image from {url[:50]}...")
                     # Remove the file since it doesn't contain faces
                     try:
                         os.remove(file_path)
@@ -974,11 +981,11 @@ def download_image(url: str, file_path: str) -> bool:
                     return False
                 
                 # Log face detection results
-                print(f"✓ Face detection: {face_result['face_count']} faces, quality: {face_result['quality_score']:.2f}")
+                print(f"[FACE] Face detection: {face_result['face_count']} faces, quality: {face_result['quality_score']:.2f}")
                 
                 # Optionally reject low-quality face images
                 if face_result['quality_score'] < 0.3:
-                    print(f"✗ Low face quality ({face_result['quality_score']:.2f}) from {url[:50]}...")
+                    print(f"[REJECT] Low face quality ({face_result['quality_score']:.2f}) from {url[:50]}...")
                     try:
                         os.remove(file_path)
                     except:
@@ -986,16 +993,16 @@ def download_image(url: str, file_path: str) -> bool:
                     return False
                     
             except Exception as e:
-                print(f"Face detection error for {url[:50]}...: {e}")
+                print(f"[WARN] Face detection error for {url[:50]}...: {repr(e)}")
                 # Decide whether to keep or reject images when face detection fails
                 # For now, we'll keep them to avoid losing too many images
                 pass
         
-        print(f"✓ Downloaded and validated {len(image_data)} bytes from {url[:50]}...")
+        print(f"[SUCCESS] Downloaded and validated {len(image_data)} bytes from {url[:50]}...")
         return True
             
     except Exception as e:
-        print(f"✗ Error downloading {url[:50]}...: {e}")
+        print(f"[ERROR] Error downloading {url[:50]}...: {e}")
         return False
 
 def collect_celebrity_images(character: str, age_context: str, temp_dir: str, num_images: int = 8) -> List[str]:
@@ -1071,12 +1078,12 @@ def collect_celebrity_images(character: str, age_context: str, temp_dir: str, nu
                         # Verify image was downloaded and is valid
                         if success and img_path.exists() and img_path.stat().st_size > 5000:
                             downloaded_images.append(str(img_path))
-                            print(f"✓ Successfully saved: {img_path.name}")
+                            print(f"[SUCCESS] Successfully saved: {img_path.name}")
                         else:
                             # Clean up failed download
                             if img_path.exists():
                                 img_path.unlink()
-                            print(f"✗ Failed validation: {img_url[:60]}...")
+                            print(f"[FAILED] Failed validation: {img_url[:60]}...")
                         
                         # Small delay to be respectful to servers
                         time.sleep(random.uniform(0.3, 0.7))
@@ -1130,7 +1137,9 @@ def collect_celebrity_images(character: str, age_context: str, temp_dir: str, nu
                         time.sleep(random.uniform(0.4, 0.8))
                         
                 except Exception as e:
-                    print(f"Alternative search failed: {e}")
+                    print(f"[ERROR] Alternative search failed: {e}")
+                    import traceback
+                    print(f"[DEBUG] Alternative search traceback: {traceback.format_exc()}")
                     continue
         
         # Final status report
@@ -1148,7 +1157,7 @@ def collect_celebrity_images(character: str, age_context: str, temp_dir: str, nu
         
         # If we got at least 3 images, consider it a success
         if len(downloaded_images) >= 3:
-            print(f"✓ Success: Collected {len(downloaded_images)} high-quality images for {character}")
+            print(f"[SUCCESS] Success: Collected {len(downloaded_images)} high-quality images for {character}")
             return downloaded_images
         
         # Fallback to mock images if we couldn't get enough real ones
@@ -1176,6 +1185,11 @@ def search_google_images(query: str, count: int = 8) -> List[str]:
         List of image URLs
     """
     try:
+        print(f"[DEBUG] GOOGLE_API_KEY present: {bool(os.getenv('GOOGLE_API_KEY'))}")
+        print(f"[DEBUG] GOOGLE_CSE_ID present: {bool(os.getenv('GOOGLE_CSE_ID'))}")
+        print(f"[DEBUG] GOOGLE_API_KEY value: {os.getenv('GOOGLE_API_KEY')[:20]}..." if os.getenv('GOOGLE_API_KEY') else "[DEBUG] GOOGLE_API_KEY: None")
+        print(f"[DEBUG] GOOGLE_CSE_ID value: {os.getenv('GOOGLE_CSE_ID')}")
+        
         # Get Google Custom Search service
         service = get_google_search_service()
         if not service:
@@ -1438,28 +1452,64 @@ def create_mock_images(character: str, age_context: str, char_dir: str) -> List[
     """
     try:
         from pathlib import Path
+        from PIL import Image, ImageDraw, ImageFont
         
         # Create mock images with some content
         mock_images = []
+        char_dir_path = Path(char_dir)
+        char_dir_path.mkdir(parents=True, exist_ok=True)
         
         for i in range(3):  # Create 3 mock images
-            mock_path = Path(char_dir) / f"mock_{character.replace(' ', '_')}_{age_context}_{i+1}.jpg"
+            mock_path = char_dir_path / f"mock_{character.replace(' ', '_')}_{age_context}_{i+1}.jpg"
             
-            # Create a simple mock image file with some content
-            with open(mock_path, 'wb') as f:
-                # Write a minimal JPEG header to make it a valid image file
-                f.write(b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C\x00')
-                f.write(b'Mock image data for testing' * 50)  # Add some content
-                f.write(b'\xff\xd9')  # JPEG end marker
+            # Create a proper mock image using PIL
+            img = Image.new('RGB', (400, 400), color=(128, 128, 128))
+            draw = ImageDraw.Draw(img)
             
+            # Draw a simple face representation
+            # Face outline
+            draw.ellipse([100, 100, 300, 300], outline=(0, 0, 0), width=3)
+            # Eyes
+            draw.ellipse([140, 160, 170, 190], fill=(0, 0, 0))
+            draw.ellipse([230, 160, 260, 190], fill=(0, 0, 0))
+            # Nose
+            draw.polygon([(200, 200), (190, 240), (210, 240)], outline=(0, 0, 0))
+            # Mouth
+            draw.arc([170, 240, 230, 280], start=0, end=180, fill=(0, 0, 0), width=3)
+            
+            # Add text
+            try:
+                # Try to add character name
+                draw.text((50, 350), f"{character[:15]}", fill=(0, 0, 0))
+            except:
+                pass
+            
+            # Save as JPEG
+            img.save(mock_path, 'JPEG', quality=95)
             mock_images.append(str(mock_path))
         
-        print(f"Created {len(mock_images)} mock images for {character} ({age_context})")
+        print(f"[MOCK] Created {len(mock_images)} mock images for {character} ({age_context})")
         return mock_images
         
     except Exception as e:
-        print(f"Error creating mock images: {e}")
-        return []
+        print(f"[ERROR] Error creating mock images: {repr(e)}")
+        # Fallback: create simple files
+        try:
+            mock_images = []
+            char_dir_path = Path(char_dir)
+            char_dir_path.mkdir(parents=True, exist_ok=True)
+            
+            for i in range(3):
+                mock_path = char_dir_path / f"simple_mock_{i+1}.jpg"
+                # Create a minimal valid JPEG
+                with open(mock_path, 'wb') as f:
+                    f.write(b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C\x00')
+                    f.write(b'X' * 1000)  # 1KB of data
+                    f.write(b'\xff\xd9')
+                mock_images.append(str(mock_path))
+            return mock_images
+        except:
+            return []
 
 def setup_face_recognition_database(characters: Dict[str, List[str]], temp_dir: str) -> Dict[str, List]:
     """
@@ -1598,7 +1648,7 @@ def generate_project_face_encodings(image_paths: List[str], entity_name: str) ->
                     print(f"  ✓ Face encoding generated from {os.path.basename(img_path)} (quality: {quality_score:.2f})")
                 
             except Exception as e:
-                print(f"  ✗ Error processing {os.path.basename(img_path)}: {e}")
+                print(f"  [ERROR] Error processing {os.path.basename(img_path)}: {e}")
                 continue
         
         result = {
@@ -1664,22 +1714,25 @@ def create_project_face_registry(characters: Dict[str, List[str]], temp_dir: str
                 
                 print(f"\nProcessing entity: {character} ({age_context})")
                 
-                # Get image paths for this entity
-                char_dir = Path(temp_dir) / f"{character.replace(' ', '_').lower()}_{age_context}"
-                if not char_dir.exists():
+                # FIXED: Collect images first before looking for them
+                print(f"  Collecting images for {character} ({age_context})...")
+                collected_images = collect_celebrity_images(character, age_context, temp_dir, num_images=8)
+                
+                if not collected_images:
                     print(f"  No images found for {character} ({age_context})")
                     continue
                 
-                # Find all image files in the character directory
-                image_extensions = ['.jpg', '.jpeg', '.png', '.webp']
+                # Verify collected images exist and are valid
                 image_paths = []
-                for ext in image_extensions:
-                    image_paths.extend(list(char_dir.glob(f"*{ext}")))
-                    image_paths.extend(list(char_dir.glob(f"*{ext.upper()}")))
+                for img_path in collected_images:
+                    if os.path.exists(img_path) and os.path.getsize(img_path) > 1000:  # At least 1KB
+                        image_paths.append(img_path)
                 
                 if not image_paths:
                     print(f"  No valid image files found for {character} ({age_context})")
                     continue
+                
+                print(f"  Successfully collected {len(image_paths)} images for {character} ({age_context})")
                 
                 # Generate face encodings for this entity
                 encoding_result = generate_project_face_encodings(
@@ -1701,9 +1754,12 @@ def create_project_face_registry(characters: Dict[str, List[str]], temp_dir: str
                     total_encodings += encoding_result['valid_encodings']
                     print(f"  ✓ Added {encoding_result['valid_encodings']} encodings to registry")
                 else:
-                    print(f"  ✗ No valid face encodings generated for {character} ({age_context})")
+                    print(f"  [ERROR] No valid face encodings generated for {character} ({age_context})")
         
-        print(f"\n📊 Project Face Registry Summary:")
+        try:
+            print(f"\n[STATS] Project Face Registry Summary:")
+        except UnicodeEncodeError:
+            print(f"\n[STATS] Project Face Registry Summary:")
         print(f"  - Total entities processed: {total_entities}")
         print(f"  - Entities with valid encodings: {len(face_registry)}")
         print(f"  - Total face encodings: {total_encodings}")
@@ -1776,7 +1832,10 @@ def validate_face_registry_quality(face_registry: Dict[str, Dict], min_quality: 
                 
                 removed_entities.append(f"{entity_name} ({age_context}) - {', '.join(reason)}")
         
-        print(f"\n📊 Face Registry Validation Results:")
+        try:
+            print(f"\n[STATS] Face Registry Validation Results:")
+        except UnicodeEncodeError:
+            print(f"\n[STATS] Face Registry Validation Results:")
         print(f"  - Original entities: {len(face_registry)}")
         print(f"  - Validated entities: {len(validated_registry)}")
         print(f"  - Removed entities: {len(removed_entities)}")
@@ -1879,7 +1938,7 @@ def extract_scene_frames(video_path: str, scene_timestamps: List[tuple], frames_
                         print(f"    ✓ Extracted frame at {frame_time:.2f}s: {os.path.basename(temp_frame.name)}")
                         
                     except Exception as e:
-                        print(f"    ✗ Error extracting frame at {frame_time:.2f}s: {e}")
+                        print(f"    [ERROR] Error extracting frame at {frame_time:.2f}s: {e}")
                         continue
                 
                 if frames_data:
@@ -1986,10 +2045,10 @@ def detect_faces_in_scene_frames(scene_frames: Dict[str, Dict]) -> Dict[str, Dic
                         
                         print(f"    ✓ Frame {frame_timestamp:.2f}s: {len(faces_in_frame)} faces detected")
                     else:
-                        print(f"    ✗ Frame {frame_timestamp:.2f}s: No faces detected")
+                        print(f"    [ERROR] Frame {frame_timestamp:.2f}s: No faces detected")
                 
                 except Exception as e:
-                    print(f"    ✗ Error processing frame {frame_timestamp:.2f}s: {e}")
+                    print(f"    [ERROR] Error processing frame {frame_timestamp:.2f}s: {e}")
                     processed_frames += 1
                     continue
             
@@ -2005,7 +2064,7 @@ def detect_faces_in_scene_frames(scene_frames: Dict[str, Dict]) -> Dict[str, Dic
             scene_face_count = sum(len(frame['faces']) for frame in frames_with_faces)
             print(f"    Scene {scene_id}: {len(frames_with_faces)}/{len(scene_data['frames'])} frames with faces ({scene_face_count} total faces)")
         
-        print(f"\n📊 Face detection in scenes complete:")
+        print(f"\n[STATS] Face detection in scenes complete:")
         print(f"  - Scenes processed: {len(scene_frames)}")
         print(f"  - Frames processed: {processed_frames}")
         print(f"  - Total faces found: {total_faces_found}")
@@ -2140,7 +2199,7 @@ def match_faces_to_entities(scene_face_data: Dict[str, Dict], face_registry: Dic
                         total_matches += 1
                         print(f"    ✓ {frame_timestamp:.2f}s: {best_match['entity_name']} (similarity: {best_similarity:.2f}, {confidence_level})")
                     else:
-                        print(f"    ✗ {frame_timestamp:.2f}s: No match above threshold ({best_similarity:.2f})")
+                        print(f"    [ERROR] {frame_timestamp:.2f}s: No match above threshold ({best_similarity:.2f})")
             
             # Calculate dominant entities for this scene
             dominant_entities = []
@@ -2170,7 +2229,7 @@ def match_faces_to_entities(scene_face_data: Dict[str, Dict], face_registry: Dic
             
             print(f"    Scene {scene_id}: {len(entity_matches)} matches, dominant: {dominant_entities[0]['entity_name'] if dominant_entities else 'None'}")
         
-        print(f"\n📊 Face matching complete:")
+        print(f"\n[STATS] Face matching complete:")
         print(f"  - Scenes processed: {len(scene_face_data)}")
         print(f"  - Faces processed: {total_faces_processed}")
         print(f"  - Successful matches: {total_matches}")
@@ -2255,7 +2314,7 @@ def analyze_script_scenes(script_content: str) -> Dict[str, Dict]:
                 scene_header="MAIN SCENE"
             )
         
-        print(f"✅ Script analysis complete: {len(script_scenes)} scenes identified")
+        print(f"[SUCCESS] Script analysis complete: {len(script_scenes)} scenes identified")
         return script_scenes
         
     except Exception as e:
@@ -2472,7 +2531,7 @@ def map_script_to_video_scenes(script_scenes: Dict[str, Dict], video_scene_match
             
             print(f"    ✓ {len(video_scene_recommendations)} video scenes found, {len(missing_characters)} characters missing")
         
-        print(f"✅ Script-to-video mapping complete: {len(script_to_video_mapping)} script scenes mapped")
+        print(f"[SUCCESS] Script-to-video mapping complete: {len(script_to_video_mapping)} script scenes mapped")
         return script_to_video_mapping
         
     except Exception as e:
@@ -2714,7 +2773,7 @@ def generate_scene_recommendations(script_to_video_mapping: Dict[str, Dict]) -> 
             'assembly_feasibility': determine_assembly_feasibility(avg_quality, total_coverage)
         }
         
-        print(f"✅ Scene recommendations generated:")
+        print(f"[SUCCESS] Scene recommendations generated:")
         print(f"   - Assembly plan: {len(assembly_plan)} scenes")
         print(f"   - Average quality: {avg_quality:.2f}")
         print(f"   - Average coverage: {total_coverage:.1f}%")
@@ -2819,7 +2878,7 @@ def extract_video_segments(video_path: str, assembly_plan: List[Dict], output_di
                 recommended_scene = plan_entry.get('recommended_video_scene')
                 
                 if not recommended_scene:
-                    print(f"  ⚠️ No video scene recommended for {script_scene_id}")
+                    print(f"  [WARNING] No video scene recommended for {script_scene_id}")
                     continue
                 
                 # Extract timing information
@@ -2830,7 +2889,7 @@ def extract_video_segments(video_path: str, assembly_plan: List[Dict], output_di
                 segment_end = min(segment_start + script_duration, video_duration)
                 
                 if segment_start >= video_duration:
-                    print(f"  ⚠️ Segment {segment_id} exceeds video duration")
+                    print(f"  [WARNING] Segment {segment_id} exceeds video duration")
                     continue
                 
                 # Extract segment
@@ -2868,10 +2927,10 @@ def extract_video_segments(video_path: str, assembly_plan: List[Dict], output_di
                         'extraction_status': 'success'
                     }
                     
-                    print(f"  ✅ Extracted {segment_id}: {segment_start:.1f}s-{segment_end:.1f}s")
+                    print(f"  [SUCCESS] Extracted {segment_id}: {segment_start:.1f}s-{segment_end:.1f}s")
                     
                 except Exception as e:
-                    print(f"  ❌ Failed to extract {segment_id}: {e}")
+                    print(f"  [ERROR] Failed to extract {segment_id}: {e}")
                     extracted_segments[segment_id] = {
                         'source_scene_id': recommended_scene,
                         'script_scene_id': script_scene_id,
@@ -2883,7 +2942,7 @@ def extract_video_segments(video_path: str, assembly_plan: List[Dict], output_di
                         'extraction_status': 'failed'
                     }
         
-        print(f"✅ Video segment extraction complete: {len(extracted_segments)} segments")
+        print(f"[SUCCESS] Video segment extraction complete: {len(extracted_segments)} segments")
         return extracted_segments
         
     except Exception as e:
@@ -2918,9 +2977,9 @@ def create_scene_transitions(segments: Dict[str, Dict], transition_type: str = "
             }
             
             transitions.append(transition)
-            print(f"  ✅ Transition {i}: {transition_effect} ({transition_duration:.1f}s)")
+            print(f"  [SUCCESS] Transition {i}: {transition_effect} ({transition_duration:.1f}s)")
         
-        print(f"✅ Scene transitions created: {len(transitions)} transitions")
+        print(f"[SUCCESS] Scene transitions created: {len(transitions)} transitions")
         return transitions
         
     except Exception as e:
@@ -2981,9 +3040,9 @@ def assemble_final_video(segments: Dict[str, Dict], transitions: List[Dict], out
                     clip = VideoFileClip(segment_data['output_path'])
                     video_clips.append(clip)
                     successful_segments.append(segment_data)
-                    print(f"  ✅ Loaded {segment_id}: {clip.duration:.1f}s")
+                    print(f"  [SUCCESS] Loaded {segment_id}: {clip.duration:.1f}s")
                 except Exception as e:
-                    print(f"  ❌ Failed to load {segment_id}: {e}")
+                    print(f"  [ERROR] Failed to load {segment_id}: {e}")
         
         if not video_clips:
             raise Exception("No valid video segments to assemble")
@@ -3049,11 +3108,11 @@ def assemble_final_video(segments: Dict[str, Dict], transitions: List[Dict], out
             'file_size': os.path.getsize(output_path) if os.path.exists(output_path) else 0
         }
         
-        print(f"✅ Video assembly complete!")
+        print(f"[SUCCESS] Video assembly complete!")
         print(f"   📁 Output: {output_path}")
-        print(f"   ⏱️ Duration: {total_duration:.1f}s")
+        print(f"   [TIME] Duration: {total_duration:.1f}s")
         print(f"   📐 Resolution: {resolution[0]}x{resolution[1]}")
-        print(f"   🎞️ Segments: {len(successful_segments)}/{len(segments)}")
+        print(f"   [VIDEO] Segments: {len(successful_segments)}/{len(segments)}")
         print(f"   ⭐ Quality: {assembly_quality:.2f}")
         
         return result
@@ -3080,7 +3139,7 @@ def apply_quality_enhancements(clip, segment_data: Dict):
         return enhanced_clip
         
     except Exception as e:
-        print(f"  ⚠️ Quality enhancement failed: {e}")
+        print(f"  [WARNING] Quality enhancement failed: {e}")
         return clip
 
 def calculate_assembly_quality(segments: List[Dict], total_duration: float) -> float:
@@ -3116,7 +3175,7 @@ def generate_video_metadata(assembly_result: Dict, assembly_plan: List[Dict],
     D4: Generate comprehensive metadata for the assembled video.
     """
     try:
-        print("📊 Generating video metadata...")
+        print("[STATS] Generating video metadata...")
         
         metadata = {
             'video_info': {
@@ -3166,7 +3225,7 @@ def generate_video_metadata(assembly_result: Dict, assembly_plan: List[Dict],
             }
             metadata['scene_breakdown'].append(scene_entry)
         
-        print(f"✅ Metadata generated for {metadata['video_info']['duration']:.1f}s video")
+        print(f"[SUCCESS] Metadata generated for {metadata['video_info']['duration']:.1f}s video")
         return metadata
         
     except Exception as e:
@@ -3187,6 +3246,9 @@ async def process_videos(
     processing_start_time = datetime.datetime.now()
     request_id = str(uuid.uuid4())[:8]
     
+    # Send initial progress update
+    await update_progress(request_id, "upload", "Initializing video processing...", 0.0)
+    
     try:
         logger.info(f"🎬 Starting video processing request {request_id}")
     except UnicodeEncodeError:
@@ -3200,22 +3262,33 @@ async def process_videos(
         try:
             account_manager = ElevenLabsAccountManager()
             try:
-                logger.info("✅ ElevenLabs account manager initialized")
+                logger.info("[SUCCESS] ElevenLabs account manager initialized")
             except UnicodeEncodeError:
                 logger.info("[SUCCESS] ElevenLabs account manager initialized")
+            
+            # Validate accounts
+            try:
+                valid_count, invalid_accounts = account_manager.validate_accounts()
+                logger.info(f"[INFO] Account validation complete: {valid_count} valid accounts")
+                if invalid_accounts:
+                    logger.warning(f"[WARNING] Removed invalid accounts: {invalid_accounts}")
+            except Exception as e:
+                logger.warning(f"[WARNING] Account validation failed: {e}")
+                
         except Exception as e:
-            logger.error(f"❌ Failed to initialize ElevenLabs account manager: {e}")
+            logger.error(f"[ERROR] Failed to initialize ElevenLabs account manager: {e}")
             raise HTTPException(status_code=500, detail="TTS service initialization failed")
         
         # Validate file sizes
         for video in videos:
             if video.size > MAX_FILE_SIZE:
-                logger.error(f"❌ File {video.filename} too large: {video.size} bytes")
+                logger.error(f"[ERROR] File {video.filename} too large: {video.size} bytes")
                 raise HTTPException(
                     status_code=400,
                     detail=f"File {video.filename} is too large. Maximum size is 100MB."
                 )
-        logger.info("✅ File size validation passed")
+        logger.info("[SUCCESS] File size validation passed")
+        await update_progress(request_id, "upload", "Uploading and saving videos...", 5.0)
 
         # Create temporary directory for processing
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3224,43 +3297,43 @@ async def process_videos(
             # Save uploaded videos with error handling
             video_paths = []
             try:
-                for video in videos:
+                for i, video in enumerate(videos):
                     temp_path = os.path.join(temp_dir, video.filename)
                     with open(temp_path, "wb") as f:
                         f.write(await video.read())
                     video_paths.append(temp_path)
                     logger.info(f"💾 Saved video: {video.filename}")
+                    await update_progress(request_id, "upload", f"Saved video {i+1}/{len(videos)}: {video.filename}", 5.0 + (i+1) * 5.0)
             except Exception as e:
-                logger.error(f"❌ Failed to save videos: {e}")
+                logger.error(f"[ERROR] Failed to save videos: {e}")
                 raise HTTPException(status_code=500, detail="Failed to save uploaded videos")
 
             # Scene detection with error handling
+            await update_progress(request_id, "detect_scenes", "Analyzing video scenes...", 15.0)
             scenes = []
             try:
-                for video_path in video_paths:
+                for i, video_path in enumerate(video_paths):
                     scene_list = detect(video_path, ContentDetector())
                     scenes.extend([(video_path, scene) for scene in scene_list])
                     logger.info(f"🎬 Detected {len(scene_list)} scenes in {os.path.basename(video_path)}")
-                logger.info(f"✅ Total scenes detected: {len(scenes)}")
+                    await update_progress(request_id, "detect_scenes", f"Detected {len(scene_list)} scenes in video {i+1}/{len(video_paths)}", 15.0 + (i+1) * 5.0)
+                logger.info(f"[SUCCESS] Total scenes detected: {len(scenes)}")
+                await update_progress(request_id, "detect_scenes", f"Scene detection complete: {len(scenes)} total scenes", 25.0)
             except Exception as e:
-                logger.error(f"❌ Scene detection failed: {e}")
+                logger.error(f"[ERROR] Scene detection failed: {e}")
                 raise HTTPException(status_code=500, detail="Scene detection failed")
 
-            # Generate script using OpenAI with error handling
+            # Use provided script (skip generation phase)
+            await update_progress(request_id, "generate_script", "Loading script content...", 30.0)
             try:
-                script = safe_execute_phase(
-                    "Script Generation",
-                    generate_script,
-                    timeout_seconds=ADVANCED_ASSEMBLY_CONFIG['timeouts']['phase_a_timeout'],
-                    prompt=prompt,
-                    scenes=scenes
-                )
+                script = prompt  # The prompt parameter now contains the full script
                 if not script:
-                    raise AdvancedAssemblyError("Script Generation", "Empty script generated")
-                logger.info(f"✅ Generated script: {len(script)} characters")
+                    raise AdvancedAssemblyError("Script Loading", "Empty script provided")
+                logger.info(f"[SUCCESS] Using provided script: {len(script)} characters")
+                await update_progress(request_id, "generate_script", f"Script loaded: {len(script)} characters", 35.0)
             except Exception as e:
-                logger.error(f"❌ Script generation failed: {e}")
-                raise HTTPException(status_code=500, detail="Failed to generate script")
+                logger.error(f"[ERROR] Script loading failed: {e}")
+                raise HTTPException(status_code=500, detail="Failed to load script")
 
             # Initialize variables for advanced assembly
             characters = {}
@@ -3284,7 +3357,7 @@ async def process_videos(
                         )
                         
                         if not characters:
-                            logger.warning("⚠️ Primary character extraction failed, trying fallback")
+                            logger.warning("[WARNING] Primary character extraction failed, trying fallback")
                             characters = safe_execute_phase(
                                 "Phase A - Character Extraction (Fallback)",
                                 extract_characters_fallback,
@@ -3292,7 +3365,7 @@ async def process_videos(
                             )
                         
                         if characters:
-                            logger.info(f"✅ Extracted {len(characters)} characters: {list(characters.keys())}")
+                            logger.info(f"[SUCCESS] Extracted {len(characters)} characters: {list(characters.keys())}")
                             
                             # Create face registry
                             face_registry = safe_execute_phase(
@@ -3310,7 +3383,7 @@ async def process_videos(
                                 min_encodings=ADVANCED_ASSEMBLY_CONFIG['face_recognition']['min_encodings']
                             )
                             
-                            logger.info(f"✅ Face registry created with {len(face_registry)} entities")
+                            logger.info(f"[SUCCESS] Face registry created with {len(face_registry)} entities")
                         else:
                             raise AdvancedAssemblyError("Phase A", "No characters could be extracted")
                             
@@ -3359,7 +3432,7 @@ async def process_videos(
                                     scene_face_data[video_path] = faces
                                     video_scene_matches.update(matches)
                             
-                            logger.info(f"✅ Phase B completed: {len(video_scene_matches)} scene matches")
+                            logger.info(f"[SUCCESS] Phase B completed: {len(video_scene_matches)} scene matches")
                             
                         except Exception as e:
                             phase_errors.append(create_error_metadata(e, "Phase B"))
@@ -3395,11 +3468,11 @@ async def process_videos(
                             quality_assessment = recommendations.get('quality_assessment', {})
                             feasibility = quality_assessment.get('assembly_feasibility', 'unknown')
                             
-                            logger.info(f"✅ Phase C completed: {len(assembly_plan)} assembly segments")
+                            logger.info(f"[SUCCESS] Phase C completed: {len(assembly_plan)} assembly segments")
                             logger.info(f"   Assembly feasibility: {feasibility}")
                             
                             if feasibility in ['difficult'] and len(assembly_plan) < 2:
-                                logger.warning(f"⚠️ Assembly feasibility is {feasibility}, falling back to simple assembly")
+                                logger.warning(f"[WARNING] Assembly feasibility is {feasibility}, falling back to simple assembly")
                                 use_advanced_assembly = False
                                 assembly_plan = []
                             else:
@@ -3409,45 +3482,61 @@ async def process_videos(
                             phase_errors.append(create_error_metadata(e, "Phase C"))
                             raise AdvancedAssemblyError("Phase C", f"Script intelligence failed: {str(e)}", e)
                     else:
-                        logger.warning("⚠️ No video scene matches found, falling back to simple assembly")
+                        logger.warning("[WARNING] No video scene matches found, falling back to simple assembly")
                         use_advanced_assembly = False
                         
                 except AdvancedAssemblyError as e:
-                    logger.error(f"❌ Advanced assembly failed at {e.phase}: {e.message}")
+                    logger.error(f"[ERROR] Advanced assembly failed at {e.phase}: {e.message}")
                     phase_errors.append(create_error_metadata(e, e.phase))
                     use_advanced_assembly = False
                     assembly_type = "simple_fallback"
                 except Exception as e:
-                    logger.error(f"❌ Unexpected error in advanced assembly: {e}")
+                    logger.error(f"[ERROR] Unexpected error in advanced assembly: {e}")
                     phase_errors.append(create_error_metadata(e, "Advanced Assembly"))
                     use_advanced_assembly = False
                     assembly_type = "simple_fallback"
 
             # TTS PIPELINE with error handling
+            await update_progress(request_id, "process_video", "Starting text-to-speech synthesis...", 50.0)
             try:
-                logger.info("🎤 Starting TTS Pipeline")
+                try:
+                    logger.info("[TTS] Starting TTS Pipeline")
+                except UnicodeEncodeError:
+                    logger.info("[TTS] Starting TTS Pipeline")
                 
                 # Step 3: Chunk the script into paragraphs
+                await update_progress(request_id, "process_video", "Chunking script for TTS processing...", 52.0)
                 script_chunks = safe_execute_phase(
                     "TTS - Script Chunking",
                     chunk_script_into_paragraphs,
                     script=script
                 )
-                logger.info(f"✅ Script chunked into {len(script_chunks)} paragraphs")
+                try:
+                    logger.info(f"[SUCCESS] Script chunked into {len(script_chunks)} paragraphs")
+                    await update_progress(request_id, "process_video", f"Script chunked into {len(script_chunks)} paragraphs", 55.0)
+                except UnicodeEncodeError:
+                    logger.info(f"[SUCCESS] Script chunked into {len(script_chunks)} paragraphs")
 
                 # Step 4: Synthesize each chunk with account switching
-                voice_id = os.getenv('ELEVENLABS_DEFAULT_VOICE_ID', 'IMd3WihrJpmKaNSM1WHx')
+                await update_progress(request_id, "process_video", "Synthesizing audio with ElevenLabs...", 58.0)
+                voice_id = os.getenv('ELEVENLABS_DEFAULT_VOICE_ID', 'nPczCjzI2devNBz1zQrb')
+                logger.info(f"[DEBUG] Using voice_id: {voice_id}")
+                logger.info(f"[DEBUG] ELEVENLABS_DEFAULT_VOICE_ID env var: {os.getenv('ELEVENLABS_DEFAULT_VOICE_ID')}")
                 tts_output_dir = os.path.join(temp_dir, 'tts_chunks')
                 
                 audio_files, chunk_account_map, account_usage = safe_execute_phase(
                     "TTS - Audio Synthesis",
                     synthesize_chunks_with_account_switching,
-                    script_chunks=script_chunks,
+                    chunks=script_chunks,
                     voice_id=voice_id,
                     output_dir=tts_output_dir,
                     account_manager=account_manager
                 )
-                logger.info(f"✅ Synthesized {len(audio_files)} audio chunks")
+                try:
+                    logger.info(f"[SUCCESS] Synthesized {len(audio_files)} audio chunks")
+                    await update_progress(request_id, "process_video", f"Audio synthesis complete: {len(audio_files)} chunks", 65.0)
+                except UnicodeEncodeError:
+                    logger.info(f"[SUCCESS] Synthesized {len(audio_files)} audio chunks")
 
                 # Step 5: Verify all chunks have audio
                 all_audio_ok, missing_indices = safe_execute_phase(
@@ -3460,6 +3549,7 @@ async def process_videos(
                     raise AdvancedAssemblyError("TTS", f"Failed to synthesize audio for chunks: {missing_indices}")
 
                 # Step 6: Concatenate all audio files into one
+                await update_progress(request_id, "process_video", "Combining audio files...", 68.0)
                 final_audio_path = os.path.join(temp_dir, 'final_voiceover.mp3')
                 safe_execute_phase(
                     "TTS - Audio Concatenation",
@@ -3467,6 +3557,7 @@ async def process_videos(
                     audio_files=audio_files,
                     output_path=final_audio_path
                 )
+                await update_progress(request_id, "process_video", "Audio processing complete", 70.0)
 
                 # Step 7: Update account usage in JSON
                 safe_execute_phase(
@@ -3476,20 +3567,30 @@ async def process_videos(
                     account_usage=account_usage
                 )
                 
-                logger.info("✅ TTS Pipeline completed successfully")
+                try:
+                    logger.info("[SUCCESS] TTS Pipeline completed successfully")
+                except UnicodeEncodeError:
+                    logger.info("[SUCCESS] TTS Pipeline completed successfully")
                 
             except Exception as e:
-                logger.error(f"❌ TTS Pipeline failed: {e}")
+                logger.error(f"[ERROR] TTS Pipeline failed: {e}")
                 raise HTTPException(status_code=500, detail=f"TTS processing failed: {str(e)}")
 
             # VIDEO ASSEMBLY PHASE
-            output_path = os.path.join(temp_dir, "output.mp4")
+            # For testing: save to Downloads folder for easy access
+            downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_filename = f"ai_video_slicer_output_{timestamp}.mp4"
+            output_path = os.path.join(downloads_path, output_filename)
+            
+            # Also keep temp path for internal processing
+            temp_output_path = os.path.join(temp_dir, "output.mp4")
             metadata = {}
             assembly_stats = {}
             
             if use_advanced_assembly and assembly_plan:
                 try:
-                    logger.info("🚀 Starting Phase D: Intelligent Video Assembly")
+                    logger.info("[START] Starting Phase D: Intelligent Video Assembly")
                     
                     # D1: Extract video segments based on assembly plan
                     segments = safe_execute_phase(
@@ -3515,7 +3616,7 @@ async def process_videos(
                         assemble_final_video,
                         segments=segments,
                         transitions=transitions,
-                        output_path=output_path,
+                        output_path=temp_output_path,
                         enhance_quality=ADVANCED_ASSEMBLY_CONFIG['assembly']['enhance_quality'],
                         audio_file=final_audio_path
                     )
@@ -3537,11 +3638,11 @@ async def process_videos(
                         "quality_score": assembly_result.get('quality_score', 0)
                     }
                     
-                    logger.info("✅ Phase D: Intelligent Video Assembly completed")
+                    logger.info("[SUCCESS] Phase D: Intelligent Video Assembly completed")
                     log_assembly_stats(assembly_stats, "advanced")
                     
                 except Exception as e:
-                    logger.error(f"❌ Phase D failed: {e}")
+                    logger.error(f"[ERROR] Phase D failed: {e}")
                     phase_errors.append(create_error_metadata(e, "Phase D"))
                     logger.info("🔄 Falling back to simple assembly")
                     use_advanced_assembly = False
@@ -3550,43 +3651,137 @@ async def process_videos(
             # SIMPLE ASSEMBLY (fallback or default)
             if not use_advanced_assembly:
                 try:
-                    logger.info("🔧 Starting Simple Video Assembly")
+                    await update_progress(request_id, "process_video", "Starting video assembly...", 75.0)
+                    logger.info("[TOOL] Starting Simple Video Assembly")
+                    
+                    # Get audio duration to match video length
+                    audio_duration = None
+                    if os.path.exists(final_audio_path):
+                        try:
+                            audio_clip = AudioFileClip(final_audio_path)
+                            audio_duration = audio_clip.duration
+                            audio_clip.close()
+                            logger.info(f"[INFO] Audio duration: {audio_duration:.1f}s - video will be trimmed to match")
+                        except Exception as e:
+                            logger.warning(f"[WARNING] Could not determine audio duration: {e}")
                     
                     # Create simple segments from all videos
                     segments = {}
+                    total_video_duration = 0
+                    
                     for i, video_path in enumerate(video_paths):
+                        video_clip = VideoFileClip(video_path)
+                        video_full_duration = video_clip.duration
+                        video_clip.close()
+                        
                         segments[f'segment_{i}'] = {
                             'video_path': video_path,
                             'start_time': 0,
-                            'duration': VideoFileClip(video_path).duration,
+                            'full_duration': video_full_duration,
                             'type': 'simple'
                         }
+                        total_video_duration += video_full_duration
                     
-                    # Simple concatenation
+                    # Determine how to split the audio duration across video segments
+                    if audio_duration and audio_duration > 0:
+                        # Calculate proportional durations for each video based on audio length
+                        for segment_id, segment_data in segments.items():
+                            # Proportional allocation based on original video length
+                            proportion = segment_data['full_duration'] / total_video_duration
+                            allocated_duration = audio_duration * proportion
+                            
+                            # Don't exceed the original video duration
+                            final_duration = min(allocated_duration, segment_data['full_duration'])
+                            segment_data['duration'] = final_duration
+                            
+                            logger.info(f"[INFO] {segment_id}: {final_duration:.1f}s (from {segment_data['full_duration']:.1f}s)")
+                    else:
+                        # Fallback: use full video durations
+                        for segment_data in segments.values():
+                            segment_data['duration'] = segment_data['full_duration']
+                    
+                    # Create video clips with proper duration trimming
                     clips = []
-                    for segment_data in segments.values():
-                        clip = VideoFileClip(segment_data['video_path'])
-                        clips.append(clip)
+                    actual_total_duration = 0
                     
-                    # Add audio if available
+                    for segment_id, segment_data in segments.items():
+                        try:
+                            logger.info(f"[INFO] Loading video clip: {segment_data['video_path']}")
+                            video_clip = VideoFileClip(segment_data['video_path'])
+                            
+                            if video_clip is None:
+                                logger.error(f"[ERROR] Failed to load video clip: {segment_data['video_path']}")
+                                continue
+                            
+                            # Validate clip has duration
+                            if not hasattr(video_clip, 'duration') or video_clip.duration is None:
+                                logger.error(f"[ERROR] Video clip has no duration: {segment_data['video_path']}")
+                                video_clip.close()
+                                continue
+                            
+                            # Trim the clip to the calculated duration
+                            if segment_data['duration'] < video_clip.duration:
+                                logger.info(f"[INFO] Trimming {segment_id} from {video_clip.duration:.1f}s to {segment_data['duration']:.1f}s")
+                                trimmed_clip = video_clip.subclip(0, segment_data['duration'])
+                                video_clip.close()
+                                clips.append(trimmed_clip)
+                            else:
+                                clips.append(video_clip)
+                            
+                            actual_total_duration += segment_data['duration']
+                            logger.info(f"[SUCCESS] Added {segment_id} to clips: {segment_data['duration']:.1f}s")
+                            
+                        except Exception as e:
+                            logger.error(f"[ERROR] Failed to process video clip {segment_id}: {e}")
+                            logger.error(f"   Video path: {segment_data['video_path']}")
+                            # Continue with other clips instead of failing completely
+                            continue
+                    
+                    logger.info(f"[INFO] Total video duration after trimming: {actual_total_duration:.1f}s")
+                    
+                    # Validate we have clips to concatenate
+                    if not clips:
+                        raise Exception("No valid video clips could be loaded for assembly")
+                    
+                    logger.info(f"[INFO] Concatenating {len(clips)} video clips...")
+                    
+                    # Concatenate clips
+                    final_clip = concatenate_videoclips(clips)
+                    
+                    # Add audio if available and ensure video matches audio duration
                     if os.path.exists(final_audio_path):
                         audio_clip = AudioFileClip(final_audio_path)
-                        final_clip = concatenate_videoclips(clips)
+                        
+                        # Ensure video duration matches audio duration exactly
+                        if final_clip.duration > audio_clip.duration:
+                            logger.info(f"[INFO] Trimming video to match audio: {audio_clip.duration:.1f}s")
+                            final_clip = final_clip.subclip(0, audio_clip.duration)
+                        elif final_clip.duration < audio_clip.duration:
+                            logger.info(f"[INFO] Trimming audio to match video: {final_clip.duration:.1f}s")
+                            audio_clip = audio_clip.subclip(0, final_clip.duration)
+                        
                         final_clip = final_clip.set_audio(audio_clip)
-                    else:
-                        final_clip = concatenate_videoclips(clips)
+                        logger.info(f"[SUCCESS] Video and audio synchronized: {final_clip.duration:.1f}s")
                     
-                    final_clip.write_videofile(output_path, codec='libx264', audio_codec='aac')
-                    final_clip.close()
+                    # Write final video
+                    await update_progress(request_id, "process_video", "Rendering final video...", 85.0)
+                    final_clip.write_videofile(temp_output_path, codec='libx264', audio_codec='aac')
+                    final_duration = final_clip.duration
+                    await update_progress(request_id, "process_video", f"Video assembly complete: {final_duration:.1f}s", 90.0)
                     
                     # Clean up clips
+                    final_clip.close()
                     for clip in clips:
                         clip.close()
+                    if os.path.exists(final_audio_path):
+                        audio_clip.close()
                     
                     assembly_stats = {
                         "segments_count": len(segments),
-                        "total_duration": sum(s['duration'] for s in segments.values()),
-                        "assembly_method": "simple"
+                        "total_duration": final_duration,
+                        "assembly_method": "simple",
+                        "audio_duration": audio_duration,
+                        "duration_matched": True if audio_duration else False
                     }
                     
                     metadata = {
@@ -3595,17 +3790,40 @@ async def process_videos(
                         "stats": assembly_stats
                     }
                     
-                    logger.info("✅ Simple Video Assembly completed")
+                    logger.info("[SUCCESS] Simple Video Assembly completed")
+                    logger.info(f"[INFO] Final video duration: {final_duration:.1f}s")
                     log_assembly_stats(assembly_stats, "simple")
                     
                 except Exception as e:
-                    logger.error(f"❌ Simple assembly failed: {e}")
+                    logger.error(f"[ERROR] Simple assembly failed: {e}")
                     raise HTTPException(status_code=500, detail=f"Video assembly failed: {str(e)}")
+
+            # COPY TO DOWNLOADS FOLDER
+            try:
+                await update_progress(request_id, "process_video", "Saving to Downloads folder...", 92.0)
+                
+                # Determine which file to copy (temp_output_path or output_path from advanced assembly)
+                source_path = temp_output_path if os.path.exists(temp_output_path) else output_path
+                
+                if os.path.exists(source_path):
+                    import shutil
+                    shutil.copy2(source_path, output_path)
+                    logger.info(f"[SUCCESS] Video saved to Downloads: {output_path}")
+                    await update_progress(request_id, "process_video", f"Video saved: {output_filename}", 94.0)
+                else:
+                    logger.warning(f"[WARNING] Source video not found at {source_path}")
+                    
+            except Exception as e:
+                logger.error(f"[ERROR] Failed to copy video to Downloads: {e}")
+                # Continue with processing even if copy fails
 
             # FINAL PROCESSING
             try:
-                # Read the final video file
-                with open(output_path, "rb") as f:
+                await update_progress(request_id, "process_video", "Finalizing video...", 95.0)
+                
+                # Read the final video file (from temp location for web response)
+                video_file_path = temp_output_path if os.path.exists(temp_output_path) else output_path
+                with open(video_file_path, "rb") as f:
                     video_data = f.read()
                 
                 # Calculate processing time
@@ -3628,18 +3846,29 @@ async def process_videos(
                     logger.info(f"[COMPLETE] Video processing completed successfully in {processing_time:.2f}s")
                 logger.info(f"   Assembly type: {assembly_type}")
                 logger.info(f"   Final video size: {len(video_data)} bytes")
+                logger.info(f"   Downloads location: {output_path}")
+                
+                # Send completion notification
+                await send_completion_update(request_id, True, {
+                    "video_size": len(video_data),
+                    "duration": final_metadata.get("stats", {}).get("total_duration", 0),
+                    "assembly_type": assembly_type,
+                    "downloads_path": output_path,
+                    "filename": output_filename
+                })
                 
                 return {
                     "status": "success",
+                    "process_id": request_id,
                     "script": script,
-                    "video_data": video_data,
+                    "data": video_data,  # Changed from video_data to data for frontend compatibility
                     "assembly_type": assembly_type,
                     "metadata": final_metadata,
                     "stats": assembly_stats
                 }
                 
             except Exception as e:
-                logger.error(f"❌ Final processing failed: {e}")
+                logger.error(f"[ERROR] Final processing failed: {e}")
                 raise HTTPException(status_code=500, detail="Failed to read final video")
 
     except HTTPException:
@@ -3758,7 +3987,7 @@ async def phase_c_complete_endpoint(request: dict):
         if not all([script_content, video_scene_matches, face_registry]):
             return {"success": False, "error": "Missing required data: script_content, video_scene_matches, or face_registry"}
         
-        print("🚀 Starting complete Phase C: Script-to-Scene Intelligence...")
+        print("[START] Starting complete Phase C: Script-to-Scene Intelligence...")
         
         # Step C1: Analyze script scenes
         print("Step C1: Analyzing script scenes...")
@@ -3776,7 +4005,7 @@ async def phase_c_complete_endpoint(request: dict):
         print("Step C3: Generating scene recommendations...")
         recommendations = generate_scene_recommendations(script_to_video_mapping)
         
-        print("✅ Phase C complete!")
+        print("[SUCCESS] Phase C complete!")
         
         return {
             "success": True,
@@ -3896,7 +4125,7 @@ async def generate_video_metadata_endpoint(request: dict):
         if not assembly_result:
             return {"success": False, "error": "No assembly result provided"}
         
-        print("📊 Generating video metadata...")
+        print("[STATS] Generating video metadata...")
         metadata = generate_video_metadata(assembly_result, assembly_plan, script_scenes, recommendations)
         
         return {
@@ -3927,7 +4156,7 @@ async def phase_d_complete_endpoint(request: dict):
         if not all([video_path, assembly_plan]):
             return {"success": False, "error": "Missing required data: video_path or assembly_plan"}
         
-        print("🚀 Starting complete Phase D: Intelligent Video Assembly...")
+        print("[START] Starting complete Phase D: Intelligent Video Assembly...")
         
         # Step D1: Extract video segments
         print("Step D1: Extracting video segments...")
@@ -3945,7 +4174,7 @@ async def phase_d_complete_endpoint(request: dict):
         print("Step D4: Generating video metadata...")
         metadata = generate_video_metadata(assembly_result, assembly_plan, script_scenes, recommendations)
         
-        print("✅ Phase D complete!")
+        print("[SUCCESS] Phase D complete!")
         
         return {
             "success": assembly_result.get('status') == 'success',
@@ -5176,7 +5405,7 @@ Just ask me questions about your script naturally - I'm here to help!"""
             # Natural language word count request
             script_length = len(session.final_script) if session.final_script else 0
             word_count = len(session.final_script.split()) if session.final_script else 0
-            response_content = f"📊 Current script: {word_count:,} words ({script_length:,} characters)"
+            response_content = f"[STATS] Current script: {word_count:,} words ({script_length:,} characters)"
             response_metadata = {"word_count": word_count, "character_count": script_length}
         
         else:
@@ -5489,12 +5718,15 @@ async def load_script_for_processing(script_id: str = Form(...)):
             raise HTTPException(status_code=404, detail="Script not found")
         
         # Return script data ready for video processing phase
+        # Handle both possible field names for script content
+        script_content = script.get("script_text") or script.get("current_script", "")
+        
         return {
             "status": "success",
             "script": {
                 "id": script["id"],
                 "title": script["title"],
-                "script_text": script["script_text"],
+                "script_text": script_content,
                 "word_count": script["word_count"],
                 "source_url": script.get("source_url"),
                 "created_at": script["created_at"],
@@ -5579,6 +5811,83 @@ async def initialize_script_session():
     except Exception as e:
         print(f"[ERROR] Failed to initialize script session: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to initialize session: {str(e)}")
+
+# Load environment variables
+load_dotenv()
+
+# WebSocket Connection Manager for Real-time Progress Updates
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, WebSocket] = {}
+
+    async def connect(self, websocket: WebSocket, process_id: str):
+        await websocket.accept()
+        self.active_connections[process_id] = websocket
+        print(f"[WS] Client connected for process {process_id}")
+
+    def disconnect(self, process_id: str):
+        if process_id in self.active_connections:
+            del self.active_connections[process_id]
+            print(f"[WS] Client disconnected for process {process_id}")
+
+    async def send_progress(self, process_id: str, step: str, message: str, progress: float):
+        if process_id in self.active_connections:
+            try:
+                await self.active_connections[process_id].send_text(json.dumps({
+                    "step": step,
+                    "message": message,
+                    "progress": progress,
+                    "timestamp": datetime.datetime.now().isoformat()
+                }))
+            except Exception as e:
+                print(f"[WS] Error sending progress for {process_id}: {e}")
+                self.disconnect(process_id)
+
+    async def send_completion(self, process_id: str, success: bool, result_data: dict = None):
+        if process_id in self.active_connections:
+            try:
+                await self.active_connections[process_id].send_text(json.dumps({
+                    "step": "completed" if success else "error",
+                    "message": "Processing completed successfully!" if success else "Processing failed",
+                    "progress": 100 if success else 0,
+                    "success": success,
+                    "result": result_data,
+                    "timestamp": datetime.datetime.now().isoformat()
+                }))
+            except Exception as e:
+                print(f"[WS] Error sending completion for {process_id}: {e}")
+            finally:
+                self.disconnect(process_id)
+
+# Initialize WebSocket manager
+manager = ConnectionManager()
+
+# Progress tracking helper functions
+async def update_progress(process_id: str, step: str, message: str, progress: float):
+    """Send progress update to connected WebSocket clients"""
+    await manager.send_progress(process_id, step, message, progress)
+    logger.info(f"[PROGRESS] {step}: {message} ({progress:.1f}%)")
+
+async def send_completion_update(process_id: str, success: bool, result_data: dict = None):
+    """Send completion notification to connected WebSocket clients"""
+    await manager.send_completion(process_id, success, result_data)
+
+# WebSocket endpoint for real-time progress updates
+@app.websocket("/ws/{process_id}")
+async def websocket_endpoint(websocket: WebSocket, process_id: str):
+    print(f"[WS] New WebSocket connection request for process {process_id}")
+    await manager.connect(websocket, process_id)
+    try:
+        while True:
+            # Keep connection alive and listen for client disconnection
+            message = await websocket.receive_text()
+            print(f"[WS] Received message from client: {message}")
+    except WebSocketDisconnect:
+        print(f"[WS] Client disconnected for process {process_id}")
+        manager.disconnect(process_id)
+    except Exception as e:
+        print(f"[WS] WebSocket error for process {process_id}: {e}")
+        manager.disconnect(process_id)
 
 if __name__ == "__main__":
     import uvicorn

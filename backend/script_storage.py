@@ -6,7 +6,7 @@ from typing import List, Dict, Optional, Any
 from pathlib import Path
 
 class ScriptStorage:
-    def __init__(self, scripts_dir: str = "../scripts"):
+    def __init__(self, scripts_dir: str = "scripts"):
         self.scripts_dir = Path(scripts_dir)
         self.scripts_dir.mkdir(exist_ok=True)
     

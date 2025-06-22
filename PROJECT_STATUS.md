@@ -1,7 +1,7 @@
 # AI Video Slicer - Project Status
 
-## 📊 Current Status: **ALL PHASES COMPLETE - UI & SCRIPT GENERATION ISSUES RESOLVED**
-**Last Updated:** December 19, 2024
+## 📊 Current Status: **ALL PHASES COMPLETE - UI TEXT OVERFLOW & SCRIPT STORAGE FIXED**
+**Last Updated:** June 20, 2025
 
 ---
 
@@ -256,8 +256,85 @@ AFTER FIXES:
 
 ---
 
+## 🔧 **JUNE 20, 2025 - UI TEXT OVERFLOW & SCRIPT STORAGE FIXES**
+
+### **Issues Identified & Resolved**
+
+#### **Issue 1: Text Overflow in Script Panel** ✅ **FIXED**
+**Problem:** 
+- Script text overflowing horizontally beyond panel boundaries
+- Long lines extending beyond the card container
+- Text not wrapping properly within the allocated space
+- Horizontal scrolling instead of text wrapping
+
+**Root Cause Analysis:**
+- ❌ **CSS Specificity Conflicts**: Tailwind Typography `prose` class was overriding width constraints
+- ❌ **Missing Container Constraints**: Parent containers lacked proper `min-w-0` for flex layouts
+- ❌ **Insufficient Text Breaking**: Text wasn't properly constrained to container width
+
+**Solution Applied:**
+- ✅ **Removed Prose Class**: Eliminated conflicting Tailwind Typography `prose` class that was applying its own width constraints
+- ✅ **Added Container Width Limits**: Applied `min-w-0` and `max-w-full` to all parent containers in the hierarchy
+- ✅ **Enhanced Text Breaking**: Added `break-words`, `overflow-wrap-anywhere`, and `word-break-break-all` for aggressive text wrapping
+- ✅ **Inline Style Overrides**: Used inline styles with higher CSS specificity to force width constraints
+- ✅ **Container Overflow Control**: Added `overflow-hidden` to prevent content from exceeding boundaries
+
+#### **Issue 2: Script Storage Directory Configuration** ✅ **FIXED**
+**Problem:** 
+- User reported saved scripts not appearing in expected location
+- Scripts were being saved to incorrect directory path
+- Save Draft functionality appeared broken to users
+
+**Root Cause Analysis:**
+- ❌ **Incorrect Directory Path**: Script storage was configured to save to `../scripts` (one level up from backend)
+- ❌ **Directory Location Confusion**: Scripts were saved to root-level `scripts/` instead of `backend/scripts/`
+- ❌ **User Looking in Wrong Location**: User expected scripts in root `scripts/` folder
+
+**Solution Applied:**
+- ✅ **Fixed Storage Path**: Changed script storage from `../scripts` to `scripts` (within backend directory)
+- ✅ **Verified Functionality**: Confirmed script saving works correctly with test script creation
+- ✅ **Directory Structure**: Scripts now properly saved to `backend/scripts/` directory
+- ✅ **Backend Server Verification**: Confirmed backend running on port 8000 and accessible
+
+#### **Verification Results**
+```
+SCRIPT STORAGE TEST:
+- ✅ Created test script successfully  
+- ✅ Script ID: 6e8fd537-4680-4f08-ac66-61ae29306c88
+- ✅ Saved to: backend/scripts/script_test_script_6e8fd537.json
+- ✅ Found 2 existing scripts in directory
+- ✅ Backend server running on 127.0.0.1:8000
+- ✅ API endpoints responding correctly
+```
+
+### **Files Modified Today**
+
+#### **Frontend Changes**
+- **`src/components/script-builder/shared/ScriptPanel.tsx`**:
+  - Fixed text overflow by removing conflicting `prose` classes
+  - Added comprehensive width constraints: `min-w-0`, `max-w-full`, `w-full`
+  - Enhanced text breaking with `break-words`, `overflow-wrap-anywhere`, `word-break-break-all`
+  - Applied `overflow-hidden` to prevent content overflow
+  - Added inline styles for higher CSS specificity
+  - Updated both script display and bullet points sections consistently
+
+#### **Backend Changes**  
+- **`backend/script_storage.py`**:
+  - Fixed script directory path from `../scripts` to `scripts`
+  - Scripts now correctly saved to `backend/scripts/` directory
+  - Maintained all existing functionality with corrected path
+
+### **Current System Status**
+- ✅ **UI Text Display**: Script text properly contained within panel boundaries
+- ✅ **Script Storage**: Save Draft functionality working and verified
+- ✅ **File Organization**: Scripts saved to correct location (`backend/scripts/`)
+- ✅ **User Experience**: Text readable without horizontal overflow
+- ✅ **Backend Integration**: All API endpoints functional and tested
+
+---
+
 ## 🐛 **Known Issues**
-- None currently identified - both major issues resolved
+- None currently identified - all reported issues resolved
 
 ---
 

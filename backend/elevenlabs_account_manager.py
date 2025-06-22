@@ -60,6 +60,49 @@ class ElevenLabsAccountManager:
 
     def get_account_email(self, account_id):
         return os.getenv(f"ELEVENLABS_EMAIL_{account_id}")
+    
+    def validate_accounts(self):
+        """Validate all accounts and remove invalid ones"""
+        valid_accounts = []
+        invalid_accounts = []
+        
+        for account in self.accounts:
+            account_id = account['id']
+            api_key = os.getenv(f"ELEVENLABS_API_KEY_{account_id}")
+            email = os.getenv(f"ELEVENLABS_EMAIL_{account_id}")
+            
+            if not api_key or not email:
+                print(f"[WARNING] Account {account_id} missing API key or email - removing from rotation")
+                invalid_accounts.append(account_id)
+                continue
+            
+            # Test the API key with a simple request
+            try:
+                headers = {'xi-api-key': api_key}
+                response = requests.get('https://api.elevenlabs.io/v1/user', headers=headers, timeout=10)
+                
+                if response.status_code == 200:
+                    print(f"[SUCCESS] Account {account_id} ({email}) validated successfully")
+                    valid_accounts.append(account)
+                elif response.status_code == 401:
+                    print(f"[WARNING] Account {account_id} has invalid API key - removing from rotation")
+                    invalid_accounts.append(account_id)
+                else:
+                    print(f"[WARNING] Account {account_id} returned status {response.status_code} - keeping but may have issues")
+                    valid_accounts.append(account)
+                    
+            except Exception as e:
+                print(f"[WARNING] Could not validate account {account_id}: {e} - keeping in rotation")
+                valid_accounts.append(account)
+        
+        # Update accounts list to only include valid ones
+        if invalid_accounts:
+            self.accounts = valid_accounts
+            self.total_accounts = len(self.accounts)
+            self._save_accounts()
+            print(f"[INFO] Removed {len(invalid_accounts)} invalid accounts. {self.total_accounts} accounts remaining.")
+        
+        return len(valid_accounts), invalid_accounts
 
 def chunk_script_into_paragraphs(script: str) -> list:
     """
@@ -134,9 +177,9 @@ def synthesize_chunks_with_account_switching(chunks, voice_id, output_dir, accou
                 if response.status_code in [401, 403]:
                     should_switch_account = True
                     error_reason = "Authentication/Authorization error (invalid API key)"
-                elif response.status_code == 402 or 'insufficient' in error_message or 'credit' in error_message:
+                elif response.status_code == 402 or 'insufficient' in error_message or 'credit' in error_message or 'quota' in error_message:
                     should_switch_account = True
-                    error_reason = "Credit/Payment error"
+                    error_reason = "Credit/Payment/Quota error"
                 elif response.status_code == 429:
                     should_switch_account = True
                     error_reason = "Rate limit error"

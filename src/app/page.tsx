@@ -91,21 +91,31 @@ export default function Home() {
       }
 
       const data = await response.json()
-      setProcessId(data.process_id)
+      
+      // Set process ID immediately for WebSocket connection
+      if (data.process_id) {
+        setProcessId(data.process_id)
+      }
 
-      // Create blob URLs for the video and script
-      const videoBlob = new Blob([data.data], { type: 'video/mp4' })
-      const videoUrl = URL.createObjectURL(videoBlob)
+      // Only process final result if we have video data
+      if (data.data && data.status === 'success') {
+        // Create blob URLs for the video and script
+        const videoBlob = new Blob([data.data], { type: 'video/mp4' })
+        const videoUrl = URL.createObjectURL(videoBlob)
+        
+        setResult({
+          script: data.script || finalizedSession.currentScript,
+          videoUrl,
+          assemblyType: data.assembly_type,
+          metadata: data.metadata,
+          stats: data.stats
+        })
+        
+        setIsProcessing(false)
+        setCurrentStep('results')
+      }
+      // If no video data yet, ProcessingStatus component will handle WebSocket updates
       
-      setResult({
-        script: data.script || finalizedSession.currentScript,
-        videoUrl,
-        assemblyType: data.assembly_type,
-        metadata: data.metadata,
-        stats: data.stats
-      })
-      
-      setCurrentStep('results')
     } catch (error) {
       console.error('Error:', error)
       setIsProcessing(false)
@@ -149,6 +159,23 @@ export default function Home() {
     setResult(null)
     setProcessId(null)
     setIsProcessing(false)
+  }
+
+  const handleProcessingComplete = (success: boolean, data?: any) => {
+    if (success) {
+      // Processing completed successfully - the video should be available
+      // The original request should have already provided the video data
+      console.log('Processing completed successfully!')
+      setIsProcessing(false)
+      // The result should already be set from the original response
+      if (!result) {
+        // If for some reason we don't have the result, show an error
+        console.error('Processing completed but no video data available')
+      }
+    } else {
+      setIsProcessing(false)
+      console.error('Processing failed:', data)
+    }
   }
 
   const renderWelcome = () => (
@@ -365,7 +392,10 @@ export default function Home() {
         </CardHeader>
         <CardContent>
           {processId ? (
-            <ProcessingStatus processId={processId} />
+            <ProcessingStatus 
+              processId={processId} 
+              onComplete={handleProcessingComplete}
+            />
           ) : (
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
@@ -385,6 +415,11 @@ export default function Home() {
         <p className="text-muted-foreground">
           AI has successfully assembled your video based on your script. Review and download below.
         </p>
+        <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 max-w-2xl mx-auto">
+          <p className="text-sm text-blue-700 dark:text-blue-300">
+            📁 <strong>For Testing:</strong> Your video has also been automatically saved to your Downloads folder for easy access!
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
