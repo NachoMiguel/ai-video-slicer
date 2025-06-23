@@ -117,10 +117,50 @@
         "final_word_count": 2033,
         "final_char_count": 11734
       }
+    },
+    {
+      "id": "59897ec9-dc2e-4737-b500-6004a00bcc3e",
+      "type": "system",
+      "content": "Script finalized successfully! Total length: 11734 characters (2033 words)",
+      "timestamp": "2025-06-22T18:10:43.765064",
+      "metadata": {
+        "final_word_count": 2033,
+        "final_char_count": 11734
+      }
+    },
+    {
+      "id": "36ffd9d5-60b7-4b5b-9da8-6ec1505d7e14",
+      "type": "system",
+      "content": "Script finalized successfully! Total length: 11734 characters (2033 words)",
+      "timestamp": "2025-06-22T19:11:35.623004",
+      "metadata": {
+        "final_word_count": 2033,
+        "final_char_count": 11734
+      }
+    },
+    {
+      "id": "5313586e-2def-480f-bcb1-4aff9eaa2994",
+      "type": "system",
+      "content": "Script finalized successfully! Total length: 11734 characters (2033 words)",
+      "timestamp": "2025-06-22T21:11:32.958553",
+      "metadata": {
+        "final_word_count": 2033,
+        "final_char_count": 11734
+      }
+    },
+    {
+      "id": "61926dc8-7716-4a87-bb05-67c92de19da5",
+      "type": "system",
+      "content": "Script finalized successfully! Total length: 11734 characters (2033 words)",
+      "timestamp": "2025-06-23T00:05:49.913598",
+      "metadata": {
+        "final_word_count": 2033,
+        "final_char_count": 11734
+      }
     }
   ],
   "is_finalized": true,
   "title": "Script: At 64, Jean-Claude Van Damme FINALLY Confirms The Truth On Steven Seagal",
-  "created_at": "2025-06-22T01:28:29.830991",
-  "updated_at": "2025-06-22T01:28:29.830991"
+  "created_at": "2025-06-23T00:05:49.926720",
+  "updated_at": "2025-06-23T00:05:49.926720"
 }

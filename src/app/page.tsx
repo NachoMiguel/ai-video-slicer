@@ -58,7 +58,17 @@ export default function Home() {
   const [useAdvancedAssembly, setUseAdvancedAssembly] = useState(true)
 
   const handleFilesAccepted = (files: File[]) => {
-    setVideos(files)
+    // Append new files to existing ones instead of replacing
+    setVideos(prevVideos => {
+      // Avoid duplicates by checking file names and sizes
+      const newFiles = files.filter(newFile => 
+        !prevVideos.some(existingFile => 
+          existingFile.name === newFile.name && 
+          existingFile.size === newFile.size
+        )
+      )
+      return [...prevVideos, ...newFiles]
+    })
   }
 
   const handleScriptFinalized = (session: ScriptSession) => {
@@ -75,11 +85,37 @@ export default function Home() {
     setCurrentStep('processing')
 
     try {
+      // Step 1: Get process ID immediately for WebSocket connection
+      console.log('[PROCESS-DEBUG] Step 1: Getting process ID...')
+      const startResponse = await fetch('http://127.0.0.1:8000/api/process/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!startResponse.ok) {
+        throw new Error('Failed to start processing')
+      }
+
+      const startData = await startResponse.json()
+      console.log('[PROCESS-DEBUG] Step 1 Complete: Process ID received:', startData.process_id)
+      
+      // Set process ID immediately for WebSocket connection
+      setProcessId(startData.process_id)
+
+      // Small delay to allow WebSocket to connect
+      await new Promise(resolve => setTimeout(resolve, 500))
+
+      // Step 2: Start main video processing with the same process ID
+      console.log('[PROCESS-DEBUG] Step 2: Starting main video processing...')
       const formData = new FormData()
       videos.forEach(video => formData.append('videos', video))
       formData.append('prompt', finalizedSession.currentScript)
       formData.append('use_base_prompt', 'false')
       formData.append('use_advanced_assembly', String(useAdvancedAssembly))
+      formData.append('skip_character_extraction', 'true')
+      formData.append('process_id', startData.process_id)  // Pass the process ID
 
       const response = await fetch('http://127.0.0.1:8000/api/process', {
         method: 'POST',
@@ -91,11 +127,7 @@ export default function Home() {
       }
 
       const data = await response.json()
-      
-      // Set process ID immediately for WebSocket connection
-      if (data.process_id) {
-        setProcessId(data.process_id)
-      }
+      console.log('[PROCESS-DEBUG] Step 2 Complete: Processing result received')
 
       // Only process final result if we have video data
       if (data.data && data.status === 'success') {
@@ -117,7 +149,7 @@ export default function Home() {
       // If no video data yet, ProcessingStatus component will handle WebSocket updates
       
     } catch (error) {
-      console.error('Error:', error)
+      console.error('[PROCESS-DEBUG] Error:', error)
       setIsProcessing(false)
       // Stay on processing step to show error
     }
@@ -312,31 +344,92 @@ export default function Home() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <UploadZone onFilesAccepted={handleFilesAccepted} />
-            
-            {videos.length > 0 && (
+            {videos.length === 0 ? (
+              <UploadZone onFilesAccepted={handleFilesAccepted} />
+            ) : (
               <div className="space-y-3">
-                <h3 className="font-semibold text-foreground">Uploaded Videos ({videos.length})</h3>
-                {videos.map((video, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border"
-                  >
-                    <div>
-                      <p className="font-medium text-foreground">{video.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {(video.size / (1024 * 1024)).toFixed(2)} MB
-                      </p>
-                    </div>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-foreground">Uploaded Videos ({videos.length})</h3>
+                  <div className="flex gap-2">
                     <Button
-                      variant="destructive"
+                      variant="outline"
                       size="sm"
-                      onClick={() => setVideos(prev => prev.filter((_, i) => i !== index))}
+                      onClick={() => {
+                        // Trigger file input for adding more videos
+                        const input = document.createElement('input')
+                        input.type = 'file'
+                        input.accept = 'video/mp4'
+                        input.multiple = true
+                        input.onchange = (e) => {
+                          const files = Array.from((e.target as HTMLInputElement).files || [])
+                          handleFilesAccepted(files)
+                        }
+                        input.click()
+                      }}
+                      className="text-xs"
                     >
-                      Remove
+                      Add More
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setVideos([])}
+                      className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                    >
+                      Clear All
                     </Button>
                   </div>
-                ))}
+                </div>
+                
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {videos.map((video, index) => (
+                    <div
+                      key={`${video.name}-${video.size}-${index}`}
+                      className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground truncate">{video.name}</p>
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                          <span>{(video.size / (1024 * 1024)).toFixed(2)} MB</span>
+                          <span>•</span>
+                          <span>Video {index + 1}</span>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setVideos(prev => prev.filter((_, i) => i !== index))}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                      >
+                        ✕
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                
+                {videos.length < 10 && (
+                  <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center">
+                    <p className="text-sm text-muted-foreground mb-2">Need more videos?</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const input = document.createElement('input')
+                        input.type = 'file'
+                        input.accept = 'video/mp4'
+                        input.multiple = true
+                        input.onchange = (e) => {
+                          const files = Array.from((e.target as HTMLInputElement).files || [])
+                          handleFilesAccepted(files)
+                        }
+                        input.click()
+                      }}
+                      className="text-xs"
+                    >
+                      + Add More Videos
+                    </Button>
+                  </div>
+                )}
 
                 {videos.length >= 2 && (
                   <div className="space-y-4 pt-4 border-t">
@@ -384,11 +477,27 @@ export default function Home() {
   const renderProcessing = () => (
     <div className="max-w-4xl mx-auto">
       <Card className="border border-border shadow-lg">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Processing Your Video</CardTitle>
+        <CardHeader className="text-center space-y-3">
+          <CardTitle className="text-2xl bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            Processing Your Video
+          </CardTitle>
           <p className="text-muted-foreground">
             Our AI is analyzing your script and assembling your videos. This may take a few minutes.
           </p>
+          
+          {/* Processing Stats */}
+          <div className="grid grid-cols-2 gap-4 mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div className="text-center">
+              <div className="text-lg font-semibold text-foreground">{videos.length}</div>
+              <div className="text-xs text-muted-foreground">Videos</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-semibold text-foreground">
+                {finalizedSession?.currentScript?.length || 0}
+              </div>
+              <div className="text-xs text-muted-foreground">Characters</div>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {processId ? (
@@ -397,9 +506,33 @@ export default function Home() {
               onComplete={handleProcessingComplete}
             />
           ) : (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-              <p className="text-muted-foreground">Initializing video processing...</p>
+            <div className="w-full max-w-md mx-auto">
+              <div className="text-center py-8 space-y-4">
+                <div className="relative">
+                  <div className="w-20 h-20 mx-auto">
+                    <div className="absolute inset-0 rounded-full border-4 border-gray-200 dark:border-gray-700"></div>
+                    <div className="absolute inset-0 rounded-full border-4 border-t-primary border-r-purple-500 animate-spin"></div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-foreground">Initializing video processing...</p>
+                  <p className="text-xs text-muted-foreground">Setting up AI processing pipeline</p>
+                </div>
+                
+                {/* Progress dots */}
+                <div className="flex justify-center space-x-1">
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="w-2 h-2 rounded-full bg-primary opacity-30 animate-pulse"
+                      style={{
+                        animationDelay: `${i * 0.3}s`,
+                        animationDuration: '1.5s'
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

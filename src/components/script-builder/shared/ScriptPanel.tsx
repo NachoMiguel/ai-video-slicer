@@ -687,26 +687,26 @@ export function ScriptPanel({
           </div>
         </CardHeader>
         
-        <CardContent className="flex-1 pt-0 px-6 pb-6 min-w-0 max-w-full overflow-hidden" onClick={handleClickOutside}>
-          <div className="h-full w-full min-w-0 max-w-full overflow-hidden">
+        <CardContent className="flex-1 p-0 min-w-0 max-w-full" onClick={handleClickOutside}>
+          <div className="h-full w-full min-w-0 max-w-full">
             {script ? (
-              <div className="h-full w-full overflow-y-auto overflow-x-hidden min-w-0 max-w-full">
+              <div className="h-full w-full overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-600 dark:scrollbar-track-gray-800 hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-500">
                 <div 
                   ref={scriptRef}
-                  className="w-full min-w-0 max-w-full overflow-hidden"
+                  className="w-full px-6 py-4"
                   onMouseUp={handleTextSelection}
                   style={{ userSelect: isModificationMode ? 'text' : 'auto' }}
                 >
-                  <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground bg-transparent border-none p-0 cursor-text w-full min-w-0 max-w-full break-words overflow-wrap-anywhere word-break-break-all" style={{ maxWidth: '100%', wordBreak: 'break-all' }}>
+                  <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground bg-transparent border-none p-0 cursor-text w-full break-words">
                     {script}
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="h-full w-full overflow-y-auto overflow-x-hidden min-w-0 max-w-full">
+              <div className="h-full w-full overflow-y-auto overflow-x-hidden px-6 py-4">
                 {bulletPoints && bulletPoints.length > 0 ? (
-                  <div className="w-full min-w-0 max-w-full overflow-hidden">
-                    <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground bg-transparent border-none p-0 w-full min-w-0 max-w-full break-words overflow-wrap-anywhere word-break-break-all" style={{ maxWidth: '100%', wordBreak: 'break-all' }}>
+                  <div className="w-full">
+                    <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground bg-transparent border-none p-0 w-full break-words">
                       {bulletPoints.map((point: any, index: number) => 
                         `${index + 1}. ${point.title}\n${point.description}\n\n`
                       ).join('')}

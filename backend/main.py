@@ -7,6 +7,7 @@ import logging
 import datetime
 import traceback
 import re
+import time
 from typing import List, Dict
 from fastapi import FastAPI, UploadFile, File, Form, WebSocket, HTTPException, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -721,6 +722,20 @@ def load_prompt_from_file(prompt_section: str = "Basic YouTube Content Analysis"
         """
         print(f"[SUCCESS] Using fallback prompt: {len(fallback_prompt)} characters")
         return fallback_prompt
+
+def get_predefined_characters() -> Dict[str, List[str]]:
+    """
+    Return predefined characters for testing mode.
+    This avoids OpenAI API calls for character extraction.
+    
+    Returns:
+        Dictionary mapping character names to list of age contexts
+        Example: {"Steven Seagal": ["any"], "Jean-Claude Van Damme": ["any"]}
+    """
+    return {
+        "Steven Seagal": ["any"],
+        "Jean-Claude Van Damme": ["any"]
+    }
 
 def extract_characters_with_age_context(script: str) -> Dict[str, List[str]]:
     """
@@ -3238,13 +3253,15 @@ def generate_video_metadata(assembly_result: Dict, assembly_plan: List[Dict],
 async def process_videos(
     videos: List[UploadFile] = File(...),
     prompt: str = Form(...),
-    use_advanced_assembly: bool = Form(True)
+    use_advanced_assembly: bool = Form(True),
+    skip_character_extraction: bool = Form(False),
+    process_id: str = Form(None)
 ):
     """
     Main video processing endpoint with advanced assembly and robust error handling
     """
     processing_start_time = datetime.datetime.now()
-    request_id = str(uuid.uuid4())[:8]
+    request_id = process_id if process_id else str(uuid.uuid4())[:8]
     
     # Send initial progress update
     await update_progress(request_id, "upload", "Initializing video processing...", 0.0)
@@ -3255,6 +3272,7 @@ async def process_videos(
         logger.info(f"[PROCESS] Starting video processing request {request_id}")
     logger.info(f"   Videos: {len(videos)} files")
     logger.info(f"   Advanced Assembly: {use_advanced_assembly}")
+    logger.info(f"   Skip Character Extraction: {skip_character_extraction}")
     logger.info(f"   Prompt: {prompt[:100]}..." if len(prompt) > 100 else f"   Prompt: {prompt}")
     
     try:
@@ -3266,14 +3284,15 @@ async def process_videos(
             except UnicodeEncodeError:
                 logger.info("[SUCCESS] ElevenLabs account manager initialized")
             
-            # Validate accounts
+            # Skip automatic validation during video processing to preserve all accounts
+            # Validation can be run manually using: python manage_elevenlabs_accounts.py status
             try:
-                valid_count, invalid_accounts = account_manager.validate_accounts()
-                logger.info(f"[INFO] Account validation complete: {valid_count} valid accounts")
-                if invalid_accounts:
-                    logger.warning(f"[WARNING] Removed invalid accounts: {invalid_accounts}")
+                summary = account_manager.get_account_status_summary()
+                logger.info(f"[INFO] Account status: {summary['total_accounts']} total, {summary['paid_accounts']} paid, {summary['free_accounts']} free")
+                if summary['inactive_accounts'] > 0:
+                    logger.info(f"[INFO] {summary['inactive_accounts']} accounts are inactive (missing API keys)")
             except Exception as e:
-                logger.warning(f"[WARNING] Account validation failed: {e}")
+                logger.warning(f"[WARNING] Could not get account status: {e}")
                 
         except Exception as e:
             logger.error(f"[ERROR] Failed to initialize ElevenLabs account manager: {e}")
@@ -3293,7 +3312,7 @@ async def process_videos(
         # Create temporary directory for processing
         with tempfile.TemporaryDirectory() as temp_dir:
             logger.info(f"📁 Created temporary directory: {temp_dir}")
-            
+                
             # Save uploaded videos with error handling
             video_paths = []
             try:
@@ -3348,7 +3367,13 @@ async def process_videos(
             if use_advanced_assembly:
                 try:
                     # PHASE A: Character Extraction and Face Registry
-                    try:
+                    if skip_character_extraction:
+                        # Use predefined characters to avoid OpenAI API calls
+                        characters = get_predefined_characters()
+                        logger.info(f"[SUCCESS] Using predefined characters: {list(characters.keys())}")
+                        await update_progress(request_id, "extract_characters", f"Using predefined characters: {list(characters.keys())}", 37.0)
+                    else:
+                        # Original character extraction logic
                         characters = safe_execute_phase(
                             "Phase A - Character Extraction",
                             extract_characters_with_age_context,
@@ -3363,7 +3388,7 @@ async def process_videos(
                                 extract_characters_fallback,
                                 script=script
                             )
-                        
+                    
                         if characters:
                             logger.info(f"[SUCCESS] Extracted {len(characters)} characters: {list(characters.keys())}")
                             
@@ -3386,10 +3411,6 @@ async def process_videos(
                             logger.info(f"[SUCCESS] Face registry created with {len(face_registry)} entities")
                         else:
                             raise AdvancedAssemblyError("Phase A", "No characters could be extracted")
-                            
-                    except Exception as e:
-                        phase_errors.append(create_error_metadata(e, "Phase A"))
-                        raise AdvancedAssemblyError("Phase A", f"Character extraction failed: {str(e)}", e)
 
                     # PHASE B: Advanced Scene Analysis
                     if characters and face_registry:
@@ -3571,7 +3592,7 @@ async def process_videos(
                     logger.info("[SUCCESS] TTS Pipeline completed successfully")
                 except UnicodeEncodeError:
                     logger.info("[SUCCESS] TTS Pipeline completed successfully")
-                
+                    
             except Exception as e:
                 logger.error(f"[ERROR] TTS Pipeline failed: {e}")
                 raise HTTPException(status_code=500, detail=f"TTS processing failed: {str(e)}")
@@ -3650,153 +3671,271 @@ async def process_videos(
 
             # SIMPLE ASSEMBLY (fallback or default)
             if not use_advanced_assembly:
-                try:
-                    await update_progress(request_id, "process_video", "Starting video assembly...", 75.0)
-                    logger.info("[TOOL] Starting Simple Video Assembly")
-                    
-                    # Get audio duration to match video length
-                    audio_duration = None
-                    if os.path.exists(final_audio_path):
-                        try:
-                            audio_clip = AudioFileClip(final_audio_path)
-                            audio_duration = audio_clip.duration
-                            audio_clip.close()
-                            logger.info(f"[INFO] Audio duration: {audio_duration:.1f}s - video will be trimmed to match")
-                        except Exception as e:
-                            logger.warning(f"[WARNING] Could not determine audio duration: {e}")
-                    
-                    # Create simple segments from all videos
-                    segments = {}
-                    total_video_duration = 0
-                    
-                    for i, video_path in enumerate(video_paths):
-                        video_clip = VideoFileClip(video_path)
-                        video_full_duration = video_clip.duration
-                        video_clip.close()
+                    try:
+                        await update_progress(request_id, "process_video", "Starting video assembly...", 75.0)
+                        logger.info("[TOOL] Starting Simple Video Assembly")
                         
-                        segments[f'segment_{i}'] = {
-                            'video_path': video_path,
-                            'start_time': 0,
-                            'full_duration': video_full_duration,
-                            'type': 'simple'
-                        }
-                        total_video_duration += video_full_duration
-                    
-                    # Determine how to split the audio duration across video segments
-                    if audio_duration and audio_duration > 0:
-                        # Calculate proportional durations for each video based on audio length
+                        # Get audio duration to match video length
+                        audio_duration = None
+                        if os.path.exists(final_audio_path):
+                            try:
+                                audio_clip = AudioFileClip(final_audio_path)
+                                audio_duration = audio_clip.duration
+                                audio_clip.close()
+                                logger.info(f"[INFO] Audio duration: {audio_duration:.1f}s - video will be trimmed to match")
+                            except Exception as e:
+                                logger.warning(f"[WARNING] Could not determine audio duration: {e}")
+                        
+                        # Create simple segments from all videos
+                        segments = {}
+                        total_video_duration = 0
+                        
+                        for i, video_path in enumerate(video_paths):
+                            video_clip = VideoFileClip(video_path)
+                            video_full_duration = video_clip.duration
+                            video_clip.close()
+                            
+                            segments[f'segment_{i}'] = {
+                                'video_path': video_path,
+                                'start_time': 0,
+                                'full_duration': video_full_duration,
+                                'type': 'simple'
+                            }
+                            total_video_duration += video_full_duration
+                        
+                        # Determine how to split the audio duration across video segments
+                        if audio_duration and audio_duration > 0:
+                            # Calculate proportional durations for each video based on audio length
+                            for segment_id, segment_data in segments.items():
+                                # Proportional allocation based on original video length
+                                proportion = segment_data['full_duration'] / total_video_duration
+                                allocated_duration = audio_duration * proportion
+                                
+                                # Don't exceed the original video duration
+                                final_duration = min(allocated_duration, segment_data['full_duration'])
+                                segment_data['duration'] = final_duration
+                                
+                                logger.info(f"[INFO] {segment_id}: {final_duration:.1f}s (from {segment_data['full_duration']:.1f}s)")
+                        else:
+                            # Fallback: use full video durations
+                            for segment_data in segments.values():
+                                segment_data['duration'] = segment_data['full_duration']
+                        
+                        # Create video clips with proper duration trimming
+                        clips = []
+                        actual_total_duration = 0
+                        
                         for segment_id, segment_data in segments.items():
-                            # Proportional allocation based on original video length
-                            proportion = segment_data['full_duration'] / total_video_duration
-                            allocated_duration = audio_duration * proportion
-                            
-                            # Don't exceed the original video duration
-                            final_duration = min(allocated_duration, segment_data['full_duration'])
-                            segment_data['duration'] = final_duration
-                            
-                            logger.info(f"[INFO] {segment_id}: {final_duration:.1f}s (from {segment_data['full_duration']:.1f}s)")
-                    else:
-                        # Fallback: use full video durations
-                        for segment_data in segments.values():
-                            segment_data['duration'] = segment_data['full_duration']
-                    
-                    # Create video clips with proper duration trimming
-                    clips = []
-                    actual_total_duration = 0
-                    
-                    for segment_id, segment_data in segments.items():
-                        try:
-                            logger.info(f"[INFO] Loading video clip: {segment_data['video_path']}")
-                            video_clip = VideoFileClip(segment_data['video_path'])
-                            
-                            if video_clip is None:
-                                logger.error(f"[ERROR] Failed to load video clip: {segment_data['video_path']}")
+                            try:
+                                logger.info(f"[INFO] Loading video clip: {segment_data['video_path']}")
+                                video_clip = VideoFileClip(segment_data['video_path'])
+                                
+                                if video_clip is None:
+                                    logger.error(f"[ERROR] Failed to load video clip: {segment_data['video_path']}")
+                                    continue
+                                
+                                # Validate clip has duration
+                                if not hasattr(video_clip, 'duration') or video_clip.duration is None:
+                                    logger.error(f"[ERROR] Video clip has no duration: {segment_data['video_path']}")
+                                    video_clip.close()
+                                    continue
+                                
+                                # Trim the clip to the calculated duration
+                                if segment_data['duration'] < video_clip.duration:
+                                    logger.info(f"[INFO] Trimming {segment_id} from {video_clip.duration:.1f}s to {segment_data['duration']:.1f}s")
+                                    trimmed_clip = video_clip.subclip(0, segment_data['duration'])
+                                    video_clip.close()
+                                    clips.append(trimmed_clip)
+                                else:
+                                    clips.append(video_clip)
+                                
+                                actual_total_duration += segment_data['duration']
+                                logger.info(f"[SUCCESS] Added {segment_id} to clips: {segment_data['duration']:.1f}s")
+                                
+                            except Exception as e:
+                                logger.error(f"[ERROR] Failed to process video clip {segment_id}: {e}")
+                                logger.error(f"   Video path: {segment_data['video_path']}")
+                                # Continue with other clips instead of failing completely
                                 continue
-                            
-                            # Validate clip has duration
-                            if not hasattr(video_clip, 'duration') or video_clip.duration is None:
-                                logger.error(f"[ERROR] Video clip has no duration: {segment_data['video_path']}")
-                                video_clip.close()
-                                continue
-                            
-                            # Trim the clip to the calculated duration
-                            if segment_data['duration'] < video_clip.duration:
-                                logger.info(f"[INFO] Trimming {segment_id} from {video_clip.duration:.1f}s to {segment_data['duration']:.1f}s")
-                                trimmed_clip = video_clip.subclip(0, segment_data['duration'])
-                                video_clip.close()
-                                clips.append(trimmed_clip)
+                        
+                        logger.info(f"[INFO] Total video duration after trimming: {actual_total_duration:.1f}s")
+                        
+                        # Validate we have clips to concatenate
+                        if not clips:
+                            raise Exception("No valid video clips could be loaded for assembly")
+                        
+                        logger.info(f"[INFO] Concatenating {len(clips)} video clips...")
+                        
+                        # Validate all clips before concatenation
+                        valid_clips = []
+                        for i, clip in enumerate(clips):
+                            if clip is not None and hasattr(clip, 'duration') and clip.duration > 0:
+                                try:
+                                    # Test frame access to ensure clip is valid
+                                    test_frame = clip.get_frame(0)
+                                    if test_frame is not None:
+                                        valid_clips.append(clip)
+                                        logger.info(f"[SUCCESS] Clip {i} validated")
+                                    else:
+                                        logger.error(f"[ERROR] Clip {i} returned None frame")
+                                        if clip: clip.close()
+                                except Exception as e:
+                                    logger.error(f"[ERROR] Clip {i} frame test failed: {e}")
+                                    if clip: clip.close()
                             else:
-                                clips.append(video_clip)
-                            
-                            actual_total_duration += segment_data['duration']
-                            logger.info(f"[SUCCESS] Added {segment_id} to clips: {segment_data['duration']:.1f}s")
-                            
+                                logger.error(f"[ERROR] Clip {i} is invalid (None or no duration)")
+                        
+                        if not valid_clips:
+                            raise Exception("No valid video clips after validation")
+                        
+                        # Concatenate valid clips with error handling
+                        try:
+                            final_clip = concatenate_videoclips(valid_clips, method="compose")
                         except Exception as e:
-                            logger.error(f"[ERROR] Failed to process video clip {segment_id}: {e}")
-                            logger.error(f"   Video path: {segment_data['video_path']}")
-                            # Continue with other clips instead of failing completely
-                            continue
-                    
-                    logger.info(f"[INFO] Total video duration after trimming: {actual_total_duration:.1f}s")
-                    
-                    # Validate we have clips to concatenate
-                    if not clips:
-                        raise Exception("No valid video clips could be loaded for assembly")
-                    
-                    logger.info(f"[INFO] Concatenating {len(clips)} video clips...")
-                    
-                    # Concatenate clips
-                    final_clip = concatenate_videoclips(clips)
-                    
-                    # Add audio if available and ensure video matches audio duration
-                    if os.path.exists(final_audio_path):
-                        audio_clip = AudioFileClip(final_audio_path)
+                            logger.error(f"[ERROR] Concatenation failed with 'compose' method: {e}")
+                            logger.info("[INFO] Retrying with 'chain' method...")
+                            final_clip = concatenate_videoclips(valid_clips, method="chain")
                         
-                        # Ensure video duration matches audio duration exactly
-                        if final_clip.duration > audio_clip.duration:
-                            logger.info(f"[INFO] Trimming video to match audio: {audio_clip.duration:.1f}s")
-                            final_clip = final_clip.subclip(0, audio_clip.duration)
-                        elif final_clip.duration < audio_clip.duration:
-                            logger.info(f"[INFO] Trimming audio to match video: {final_clip.duration:.1f}s")
-                            audio_clip = audio_clip.subclip(0, final_clip.duration)
+                        # Add audio if available and ensure video matches audio duration
+                        if os.path.exists(final_audio_path):
+                            audio_clip = AudioFileClip(final_audio_path)
+                            
+                            # Ensure video duration matches audio duration exactly
+                            if final_clip.duration > audio_clip.duration:
+                                logger.info(f"[INFO] Trimming video to match audio: {audio_clip.duration:.1f}s")
+                                final_clip = final_clip.subclip(0, audio_clip.duration)
+                            elif final_clip.duration < audio_clip.duration:
+                                logger.info(f"[INFO] Trimming audio to match video: {final_clip.duration:.1f}s")
+                                audio_clip = audio_clip.subclip(0, final_clip.duration)
+                            
+                            final_clip = final_clip.set_audio(audio_clip)
+                            logger.info(f"[SUCCESS] Video and audio synchronized: {final_clip.duration:.1f}s")
                         
-                        final_clip = final_clip.set_audio(audio_clip)
-                        logger.info(f"[SUCCESS] Video and audio synchronized: {final_clip.duration:.1f}s")
-                    
-                    # Write final video
-                    await update_progress(request_id, "process_video", "Rendering final video...", 85.0)
-                    final_clip.write_videofile(temp_output_path, codec='libx264', audio_codec='aac')
-                    final_duration = final_clip.duration
-                    await update_progress(request_id, "process_video", f"Video assembly complete: {final_duration:.1f}s", 90.0)
-                    
-                    # Clean up clips
-                    final_clip.close()
-                    for clip in clips:
-                        clip.close()
-                    if os.path.exists(final_audio_path):
-                        audio_clip.close()
-                    
-                    assembly_stats = {
-                        "segments_count": len(segments),
-                        "total_duration": final_duration,
-                        "assembly_method": "simple",
-                        "audio_duration": audio_duration,
-                        "duration_matched": True if audio_duration else False
-                    }
-                    
-                    metadata = {
-                        "assembly_type": assembly_type,
-                        "timestamp": datetime.datetime.now().isoformat(),
-                        "stats": assembly_stats
-                    }
-                    
-                    logger.info("[SUCCESS] Simple Video Assembly completed")
-                    logger.info(f"[INFO] Final video duration: {final_duration:.1f}s")
-                    log_assembly_stats(assembly_stats, "simple")
-                    
-                except Exception as e:
-                    logger.error(f"[ERROR] Simple assembly failed: {e}")
-                    raise HTTPException(status_code=500, detail=f"Video assembly failed: {str(e)}")
+                        # Write final video with comprehensive error handling
+                        await update_progress(request_id, "process_video", "Rendering final video...", 85.0)
+                        
+                        # Get final duration before any potential errors
+                        final_duration = final_clip.duration
+                        
+                        # Multiple codec and quality fallback attempts
+                        video_write_success = False
+                        write_attempts = [
+                            # Attempt 1: High quality H.264
+                            {"codec": "libx264", "audio_codec": "aac", "preset": "medium", "bitrate": "2000k"},
+                            # Attempt 2: Lower quality H.264
+                            {"codec": "libx264", "audio_codec": "aac", "preset": "fast", "bitrate": "1000k"},
+                            # Attempt 3: Windows-compatible codecs
+                            {"codec": "mpeg4", "audio_codec": "libmp3lame"},
+                            # Attempt 4: Basic fallback
+                            {"codec": "libx264", "audio_codec": "aac", "preset": "ultrafast"},
+                            # Attempt 5: Last resort - no audio codec specified
+                            {"codec": "libx264"}
+                        ]
+                        
+                        last_error = None
+                        for attempt_num, write_params in enumerate(write_attempts, 1):
+                            try:
+                                logger.info(f"[INFO] Video write attempt {attempt_num}/{len(write_attempts)} with params: {write_params}")
+                                
+                                # Check available disk space (basic check)
+                                import shutil
+                                free_space = shutil.disk_usage(os.path.dirname(temp_output_path)).free
+                                estimated_size = final_duration * 1024 * 1024 * 2  # Rough estimate: 2MB per second
+                                
+                                if free_space < estimated_size * 1.5:  # Need 50% buffer
+                                    logger.warning(f"[WARNING] Low disk space: {free_space/1024/1024:.1f}MB free, estimated need: {estimated_size/1024/1024:.1f}MB")
+                                
+                                # Write video with current parameters
+                                final_clip.write_videofile(
+                                    temp_output_path,
+                                    verbose=False,
+                                    logger=None,
+                                    **write_params
+                                )
+                                
+                                # Verify file was created and has content
+                                if os.path.exists(temp_output_path) and os.path.getsize(temp_output_path) > 1024:  # At least 1KB
+                                    video_write_success = True
+                                    logger.info(f"[SUCCESS] Video written successfully on attempt {attempt_num}")
+                                    logger.info(f"[SUCCESS] File size: {os.path.getsize(temp_output_path)/1024/1024:.1f}MB")
+                                    break
+                                else:
+                                    raise Exception("Video file not created or empty")
+                                    
+                            except Exception as e:
+                                last_error = e
+                                logger.warning(f"[WARNING] Video write attempt {attempt_num} failed: {e}")
+                                
+                                # Clean up failed attempt
+                                try:
+                                    if os.path.exists(temp_output_path):
+                                        os.remove(temp_output_path)
+                                except:
+                                    pass
+                                
+                                # If not last attempt, continue to next
+                                if attempt_num < len(write_attempts):
+                                    await update_progress(request_id, "process_video", f"Retrying video render (attempt {attempt_num+1})...", 85.0 + attempt_num)
+                                    continue
+                        
+                        # Check if all attempts failed
+                        if not video_write_success:
+                            logger.error(f"[ERROR] All video write attempts failed. Last error: {last_error}")
+                            raise Exception(f"Failed to render video after {len(write_attempts)} attempts. Last error: {last_error}")
+                        
+                        await update_progress(request_id, "process_video", f"Video assembly complete: {final_duration:.1f}s", 90.0)
+                        
+                        # Clean up clips with proper error handling and memory management
+                        try:
+                            if final_clip:
+                                final_clip.close()
+                                del final_clip  # Explicit memory cleanup
+                        except Exception as e:
+                            logger.warning(f"[WARNING] Error closing final clip: {e}")
+                        
+                        for i, clip in enumerate(clips):
+                            try:
+                                if clip:
+                                    clip.close()
+                                    del clip  # Explicit memory cleanup
+                            except Exception as e:
+                                logger.warning(f"[WARNING] Error closing clip {i}: {e}")
+                        
+                        # Clear clips list
+                        clips.clear()
+                        
+                        if 'audio_clip' in locals():
+                            try:
+                                audio_clip.close()
+                                del audio_clip  # Explicit memory cleanup
+                            except Exception as e:
+                                logger.warning(f"[WARNING] Error closing audio clip: {e}")
+                        
+                        # Force garbage collection for large video processing
+                        import gc
+                        gc.collect()
+                        
+                        assembly_stats = {
+                            "segments_count": len(segments),
+                            "total_duration": final_duration,
+                            "assembly_method": "simple",
+                            "audio_duration": audio_duration,
+                            "duration_matched": True if audio_duration else False
+                        }
+                        
+                        metadata = {
+                            "assembly_type": assembly_type,
+                            "timestamp": datetime.datetime.now().isoformat(),
+                            "stats": assembly_stats
+                        }
+                        
+                        logger.info("[SUCCESS] Simple Video Assembly completed")
+                        logger.info(f"[INFO] Final video duration: {final_duration:.1f}s")
+                        log_assembly_stats(assembly_stats, "simple")
+                        
+                    except Exception as e:
+                        logger.error(f"[ERROR] Simple assembly failed: {e}")
+                        raise HTTPException(status_code=500, detail=f"Video assembly failed: {str(e)}")
 
             # COPY TO DOWNLOADS FOLDER
             try:
@@ -3823,8 +3962,36 @@ async def process_videos(
                 
                 # Read the final video file (from temp location for web response)
                 video_file_path = temp_output_path if os.path.exists(temp_output_path) else output_path
-                with open(video_file_path, "rb") as f:
-                    video_data = f.read()
+                
+                # Verify final video file exists and is valid
+                if not os.path.exists(video_file_path):
+                    raise FileNotFoundError(f"Final video file not found at: {video_file_path}")
+                
+                file_size = os.path.getsize(video_file_path)
+                if file_size == 0:
+                    raise Exception(f"Final video file is empty: {video_file_path}")
+                
+                logger.info(f"[INFO] Reading final video file: {video_file_path} ({file_size/1024/1024:.1f}MB)")
+                
+                # Read video data with error handling
+                max_retries = 3
+                video_data = None
+                for read_attempt in range(max_retries):
+                    try:
+                        with open(video_file_path, "rb") as f:
+                            video_data = f.read()
+                        
+                        if len(video_data) == file_size:
+                            logger.info(f"[SUCCESS] Video data read successfully ({len(video_data)} bytes)")
+                            break
+                        else:
+                            raise Exception(f"Data size mismatch: expected {file_size}, got {len(video_data)}")
+                            
+                    except Exception as e:
+                        logger.warning(f"[WARNING] Video read attempt {read_attempt + 1} failed: {e}")
+                        if read_attempt == max_retries - 1:
+                            raise Exception(f"Failed to read video file after {max_retries} attempts: {e}")
+                        time.sleep(0.5)  # Brief pause before retry
                 
                 # Calculate processing time
                 processing_time = (datetime.datetime.now() - processing_start_time).total_seconds()
@@ -3870,6 +4037,8 @@ async def process_videos(
             except Exception as e:
                 logger.error(f"[ERROR] Final processing failed: {e}")
                 raise HTTPException(status_code=500, detail="Failed to read final video")
+
+        return start_processing
 
     except HTTPException:
         # Re-raise HTTP exceptions as-is
@@ -5871,6 +6040,22 @@ async def update_progress(process_id: str, step: str, message: str, progress: fl
 async def send_completion_update(process_id: str, success: bool, result_data: dict = None):
     """Send completion notification to connected WebSocket clients"""
     await manager.send_completion(process_id, success, result_data)
+
+# Generate a process ID immediately for frontend WebSocket connection
+@app.post("/api/process/start")
+async def start_process():
+    """
+    Generate a process ID immediately for WebSocket connection
+    Returns the process_id that will be used for the actual processing
+    """
+    process_id = str(uuid.uuid4())[:8]
+    logger.info(f"[PROCESS-START] Generated process ID: {process_id}")
+    
+    return {
+        "process_id": process_id,
+        "status": "ready",
+        "message": "Process ID generated. Ready to start processing."
+    }
 
 # WebSocket endpoint for real-time progress updates
 @app.websocket("/ws/{process_id}")

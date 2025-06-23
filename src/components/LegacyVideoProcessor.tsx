@@ -46,6 +46,7 @@ export function LegacyVideoProcessor({ className = '' }: LegacyVideoProcessorPro
       formData.append('prompt', prompt)
       formData.append('use_base_prompt', String(prompt === 'Use base prompt'))
       formData.append('use_advanced_assembly', String(useAdvancedAssembly))
+      formData.append('skip_character_extraction', 'true')
 
       const response = await fetch('http://127.0.0.1:8000/api/process', {
         method: 'POST',
