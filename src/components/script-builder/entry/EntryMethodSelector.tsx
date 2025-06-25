@@ -163,7 +163,7 @@ export function EntryMethodSelector({ onMethodSelected, isLoading = false }: Ent
         </Button>
         
         <p className="text-sm text-muted-foreground">
-          No account required • Free to use • Privacy-focused
+          No account required - Free to use - Privacy-focused
         </p>
       </div>
     </div>

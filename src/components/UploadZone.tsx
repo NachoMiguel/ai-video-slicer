@@ -66,7 +66,7 @@ export function UploadZone({ onFilesAccepted, maxFiles = 2 }: UploadZoneProps) {
       >
         <input {...getInputProps()} />
         <div className="space-y-4">
-          <div className="text-4xl">📹</div>
+          <div className="text-4xl">[CAM]</div>
           <div className="space-y-2">
             <p className="text-xl font-semibold text-slate-800">
               {isDragActive
@@ -83,7 +83,7 @@ export function UploadZone({ onFilesAccepted, maxFiles = 2 }: UploadZoneProps) {
       {error && (
         <div className="rounded-xl bg-red-50 border border-red-200 p-4">
           <div className="flex items-center">
-            <div className="text-red-500 mr-3">⚠️</div>
+            <div className="text-red-500 mr-3">[WARNING]</div>
             <p className="text-sm font-medium text-red-800">{error}</p>
           </div>
         </div>

@@ -30,21 +30,21 @@ from elevenlabs_account_manager import ElevenLabsAccountManager
 
 def show_usage():
     """Display usage information"""
-    print(__doc__)
+    safe_print(__doc__)
 
 def status_command(manager, skip_validation=False):
     """Show detailed account status"""
     if not skip_validation:
-        print("🔍 Validating accounts (this may take a moment)...")
+        safe_print("[?] Validating accounts (this may take a moment)...")
         try:
             valid_count, invalid_accounts = manager.validate_accounts()
-            print(f"✅ Validation complete: {valid_count} valid accounts")
+            safe_print(f"[SUCCESS] Validation complete: {valid_count} valid accounts")
             if invalid_accounts:
-                print(f"❌ Marked {len(invalid_accounts)} accounts as inactive: {invalid_accounts}")
+                safe_print(f"[ERROR] Marked {len(invalid_accounts)} accounts as inactive: {invalid_accounts}")
         except Exception as e:
-            print(f"⚠️  Validation failed: {e}")
+            safe_print(f"[WARNING]  Validation failed: {e}")
     else:
-        print("⚡ Skipping API validation (showing cached status)")
+        safe_print("[FAST] Skipping API validation (showing cached status)")
     
     # Show detailed status
     manager.print_account_status()
@@ -60,7 +60,7 @@ def upgrade_command(manager, account_id, plan_type='starter'):
         # Validate plan type
         valid_plans = ['starter', 'creator', 'pro', 'scale', 'business']
         if plan_type.lower() not in valid_plans:
-            print(f"❌ Invalid plan type '{plan_type}'. Valid options: {', '.join(valid_plans)}")
+            safe_print(f"[ERROR] Invalid plan type '{plan_type}'. Valid options: {', '.join(valid_plans)}")
             return
         
         # Check if account exists
@@ -71,61 +71,61 @@ def upgrade_command(manager, account_id, plan_type='starter'):
                 break
         
         if not account_found:
-            print(f"❌ Account {account_id} not found")
+            safe_print(f"[ERROR] Account {account_id} not found")
             return
         
         # Mark as paid
         manager.set_account_as_paid(account_id, plan_type.lower())
-        print(f"🎉 Account {account_id} successfully marked as paid ({plan_type} plan)")
-        print(f"💡 Remember to actually upgrade this account at: https://elevenlabs.io/pricing")
-        print(f"💰 {plan_type.title()} plan cost: ${get_plan_cost(plan_type)}/month")
+        safe_print(f"[DONE] Account {account_id} successfully marked as paid ({plan_type} plan)")
+        safe_print(f"[?] Remember to actually upgrade this account at: https://elevenlabs.io/pricing")
+        safe_print(f"[?] {plan_type.title()} plan cost: ${get_plan_cost(plan_type)}/month")
         
     except ValueError as e:
-        print(f"❌ Error: {e}")
+        safe_print(f"[ERROR] Error: {e}")
 
 def downgrade_command(manager, account_id):
     """Mark an account as free"""
     try:
         account_id = int(account_id)
         manager.set_account_as_free(account_id)
-        print(f"📉 Account {account_id} marked as free")
+        safe_print(f"[?] Account {account_id} marked as free")
         
     except ValueError as e:
-        print(f"❌ Error: {e}")
+        safe_print(f"[ERROR] Error: {e}")
 
 def unflag_command(manager, account_id):
     """Remove flag from an account"""
     try:
         account_id = int(account_id)
         manager.unflag_account(account_id)
-        print(f"🔓 Account {account_id} unflagged")
+        safe_print(f"[?] Account {account_id} unflagged")
         
     except ValueError as e:
-        print(f"❌ Error: {e}")
+        safe_print(f"[ERROR] Error: {e}")
 
 def reactivate_command(manager, account_id):
     """Reactivate an inactive account"""
     try:
         account_id = int(account_id)
         manager.reactivate_account(account_id)
-        print(f"🔄 Account {account_id} reactivated")
-        print(f"💡 Make sure you have added the API key and email for this account to your .env file")
+        safe_print(f"[ROTATE] Account {account_id} reactivated")
+        safe_print(f"[?] Make sure you have added the API key and email for this account to your .env file")
         
     except ValueError as e:
-        print(f"❌ Error: {e}")
+        safe_print(f"[ERROR] Error: {e}")
 
 def recommend_command(manager):
     """Provide upgrade recommendations"""
     summary = manager.get_account_status_summary()
     
-    print("\n" + "="*60)
-    print("💡 UPGRADE RECOMMENDATIONS")
-    print("="*60)
+    safe_print("\n" + "="*60)
+    safe_print("[?] UPGRADE RECOMMENDATIONS")
+    safe_print("="*60)
     
     if summary['paid_accounts'] > 0:
-        print(f"✅ You have {summary['paid_accounts']} paid account(s) - great for bypassing IP restrictions!")
+        safe_print(f"[SUCCESS] You have {summary['paid_accounts']} paid account(s) - great for bypassing IP restrictions!")
     else:
-        print("⚠️  You have no paid accounts - consider upgrading to avoid IP/VPN issues")
+        safe_print("[WARNING]  You have no paid accounts - consider upgrading to avoid IP/VPN issues")
     
     # Find best candidates for upgrade
     free_accounts = summary['free_account_details']
@@ -133,30 +133,30 @@ def recommend_command(manager):
         # Sort by credits remaining
         free_accounts.sort(key=lambda x: x['credits_remaining'], reverse=True)
         
-        print(f"\n🎯 RECOMMENDED ACCOUNTS TO UPGRADE:")
+        safe_print(f"\n[TARGET] RECOMMENDED ACCOUNTS TO UPGRADE:")
         for i, acc in enumerate(free_accounts[:3]):  # Show top 3
-            print(f"   {i+1}. Account {acc['id']}: {acc['email']} - {acc['credits_remaining']:,} credits remaining")
+            safe_print(f"   {i+1}. Account {acc['id']}: {acc['email']} - {acc['credits_remaining']:,} credits remaining")
         
-        print(f"\n💰 COST ANALYSIS:")
-        print(f"   Starter Plan: $5/month (first month $1) - 30k credits/month")
-        print(f"   Creator Plan: $22/month (first month $11) - 100k credits/month")
-        print(f"   Pro Plan: $99/month - 500k credits/month")
+        safe_print(f"\n[?] COST ANALYSIS:")
+        safe_print(f"   Starter Plan: $5/month (first month $1) - 30k credits/month")
+        safe_print(f"   Creator Plan: $22/month (first month $11) - 100k credits/month")
+        safe_print(f"   Pro Plan: $99/month - 500k credits/month")
         
-        print(f"\n🚀 QUICK START:")
-        print(f"   1. Upgrade your best account: python manage_elevenlabs_accounts.py upgrade {free_accounts[0]['id']}")
-        print(f"   2. Go to https://elevenlabs.io/pricing and actually purchase the plan")
-        print(f"   3. Test with a small script to verify IP restrictions are lifted")
+        safe_print(f"\n[?] QUICK START:")
+        safe_print(f"   1. Upgrade your best account: python manage_elevenlabs_accounts.py upgrade {free_accounts[0]['id']}")
+        safe_print(f"   2. Go to https://elevenlabs.io/pricing and actually purchase the plan")
+        safe_print(f"   3. Test with a small script to verify IP restrictions are lifted")
         
     if summary['flagged_accounts'] > 0:
-        print(f"\n🚫 FLAGGED ACCOUNTS ({summary['flagged_accounts']}):")
+        safe_print(f"\n[?] FLAGGED ACCOUNTS ({summary['flagged_accounts']}):")
         for acc in summary['flagged_account_details']:
             reason = acc.get('flag_reason', 'Unknown')
-            print(f"   Account {acc['id']}: {reason}")
+            safe_print(f"   Account {acc['id']}: {reason}")
             if 'vpn' in reason.lower() or 'proxy' in reason.lower():
-                print(f"      💡 Solution: Upgrade account {acc['id']} to paid plan")
-                print(f"      🔧 Command: python manage_elevenlabs_accounts.py upgrade {acc['id']}")
+                safe_print(f"      [?] Solution: Upgrade account {acc['id']} to paid plan")
+                safe_print(f"      [TOOL] Command: python manage_elevenlabs_accounts.py upgrade {acc['id']}")
     
-    print("="*60)
+    safe_print("="*60)
 
 def get_plan_cost(plan_type):
     """Get the monthly cost for a plan type"""
@@ -182,17 +182,17 @@ def test_account_command(manager, account_id):
                 break
         
         if not account_found:
-            print(f"❌ Account {account_id} not found")
+            safe_print(f"[ERROR] Account {account_id} not found")
             return
         
         api_key = os.getenv(f"ELEVENLABS_API_KEY_{account_id}")
         email = os.getenv(f"ELEVENLABS_EMAIL_{account_id}")
         
         if not api_key or not email:
-            print(f"❌ Account {account_id} missing API key or email in .env file")
+            safe_print(f"[ERROR] Account {account_id} missing API key or email in .env file")
             return
         
-        print(f"🧪 Testing account {account_id} ({email})...")
+        safe_print(f"[?] Testing account {account_id} ({email})...")
         
         # Test API key
         import requests
@@ -204,28 +204,28 @@ def test_account_command(manager, account_id):
             plan_info = user_data.get('subscription', {})
             tier = plan_info.get('tier', 'free')
             
-            print(f"✅ Account {account_id} is working!")
-            print(f"   📧 Email: {email}")
-            print(f"   💳 Plan: {tier}")
-            print(f"   🔢 Credits: {plan_info.get('character_limit', 'Unknown')}")
+            safe_print(f"[SUCCESS] Account {account_id} is working!")
+            safe_print(f"   [?] Email: {email}")
+            safe_print(f"   [?] Plan: {tier}")
+            safe_print(f"   [?] Credits: {plan_info.get('character_limit', 'Unknown')}")
             
             if tier != 'free':
-                print(f"   🎉 This is a PAID account - bypasses IP restrictions!")
+                safe_print(f"   [DONE] This is a PAID account - bypasses IP restrictions!")
             else:
-                print(f"   ⚠️  This is a FREE account - subject to IP restrictions")
+                safe_print(f"   [WARNING]  This is a FREE account - subject to IP restrictions")
                 
         else:
-            print(f"❌ Account {account_id} failed: {response.status_code}")
+            safe_print(f"[ERROR] Account {account_id} failed: {response.status_code}")
             try:
                 error_data = response.json()
-                print(f"   Error: {error_data}")
+                safe_print(f"   Error: {error_data}")
             except:
-                print(f"   Error: {response.text}")
+                safe_print(f"   Error: {response.text}")
                 
     except ValueError as e:
-        print(f"❌ Error: {e}")
+        safe_print(f"[ERROR] Error: {e}")
     except Exception as e:
-        print(f"❌ Unexpected error: {e}")
+        safe_print(f"[ERROR] Unexpected error: {e}")
 
 def main():
     """Main function"""
@@ -252,9 +252,9 @@ def main():
             manager = ElevenLabsAccountManager()  # Use default path
             
     except Exception as e:
-        print(f"❌ Failed to initialize account manager: {e}")
-        print(f"💡 Make sure you're running from the ai-video-slicer/ root directory")
-        print(f"💡 Or that elevenlabs_accounts.json exists in backend/")
+        safe_print(f"[ERROR] Failed to initialize account manager: {e}")
+        safe_print(f"[?] Make sure you're running from the ai-video-slicer/ root directory")
+        safe_print(f"[?] Or that elevenlabs_accounts.json exists in backend/")
         return
     
     # Handle commands
@@ -264,7 +264,7 @@ def main():
         
     elif command == 'upgrade':
         if len(sys.argv) < 3:
-            print("❌ Usage: python manage_elevenlabs_accounts.py upgrade <account_id> [plan_type]")
+            safe_print("[ERROR] Usage: python manage_elevenlabs_accounts.py upgrade <account_id> [plan_type]")
             return
         account_id = sys.argv[2]
         plan_type = sys.argv[3] if len(sys.argv) > 3 else 'starter'
@@ -272,21 +272,21 @@ def main():
         
     elif command == 'downgrade':
         if len(sys.argv) < 3:
-            print("❌ Usage: python manage_elevenlabs_accounts.py downgrade <account_id>")
+            safe_print("[ERROR] Usage: python manage_elevenlabs_accounts.py downgrade <account_id>")
             return
         account_id = sys.argv[2]
         downgrade_command(manager, account_id)
         
     elif command == 'unflag':
         if len(sys.argv) < 3:
-            print("❌ Usage: python manage_elevenlabs_accounts.py unflag <account_id>")
+            safe_print("[ERROR] Usage: python manage_elevenlabs_accounts.py unflag <account_id>")
             return
         account_id = sys.argv[2]
         unflag_command(manager, account_id)
         
     elif command == 'reactivate':
         if len(sys.argv) < 3:
-            print("❌ Usage: python manage_elevenlabs_accounts.py reactivate <account_id>")
+            safe_print("[ERROR] Usage: python manage_elevenlabs_accounts.py reactivate <account_id>")
             return
         account_id = sys.argv[2]
         reactivate_command(manager, account_id)
@@ -296,13 +296,13 @@ def main():
         
     elif command == 'test':
         if len(sys.argv) < 3:
-            print("❌ Usage: python manage_elevenlabs_accounts.py test <account_id>")
+            safe_print("[ERROR] Usage: python manage_elevenlabs_accounts.py test <account_id>")
             return
         account_id = sys.argv[2]
         test_account_command(manager, account_id)
         
     else:
-        print(f"❌ Unknown command: {command}")
+        safe_print(f"[ERROR] Unknown command: {command}")
         show_usage()
 
 if __name__ == "__main__":

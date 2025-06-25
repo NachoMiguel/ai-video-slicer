@@ -18,24 +18,38 @@ export function ProcessingStatus({ processId, onComplete }: ProcessingStatusProp
   const [status, setStatus] = useState<Status | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting')
+  const [hasReceivedProgress, setHasReceivedProgress] = useState(false)
 
   useEffect(() => {
     console.log(`[WS-DEBUG] Starting WebSocket connection for process ${processId}`)
     console.log(`[WS-DEBUG] WebSocket URL: ws://127.0.0.1:8000/ws/${processId}`)
     
     setConnectionStatus('connecting')
+    setError(null)
+    setHasReceivedProgress(false)
     const ws = new WebSocket(`ws://127.0.0.1:8000/ws/${processId}`)
 
+    // Set up a timeout to clear any stale error states after connection attempts
+    const connectionTimeout = setTimeout(() => {
+      if (!hasReceivedProgress && error) {
+        console.log(`[WS-DEBUG] TIMEOUT: Clearing stale error state after connection timeout`)
+        setError(null)
+      }
+    }, 10000) // Clear errors after 10 seconds if no progress received
+
     ws.onopen = () => {
-      console.log(`[WS-DEBUG] ✅ WebSocket connected successfully for process ${processId}`)
+      console.log(`[WS-DEBUG] SUCCESS: WebSocket connected successfully for process ${processId}`)
       setConnectionStatus('connected')
+      // Clear any previous error states when connection succeeds
+      setError(null)
+      clearTimeout(connectionTimeout)
     }
 
     ws.onmessage = (event) => {
-      console.log(`[WS-DEBUG] 📨 Raw message received:`, event.data)
+      console.log(`[WS-DEBUG] MESSAGE: Raw message received:`, event.data)
       try {
         const data = JSON.parse(event.data)
-        console.log(`[WS-DEBUG] 📋 Parsed progress data:`, {
+        console.log(`[WS-DEBUG] DATA: Parsed progress data:`, {
           step: data.step,
           progress: data.progress,
           message: data.message,
@@ -45,48 +59,70 @@ export function ProcessingStatus({ processId, onComplete }: ProcessingStatusProp
         
         setStatus(data)
         
+        // Mark that we've received at least one progress message
+        if (!hasReceivedProgress) {
+          setHasReceivedProgress(true)
+          // Also clear any error state when we first receive progress
+          setError(null)
+          console.log(`[WS-DEBUG] RECOVERY: First progress message received - cleared any error state`)
+        }
+        
         if (data.step === 'error') {
-          console.log(`[WS-DEBUG] ❌ Error received:`, data.message)
+          console.log(`[WS-DEBUG] ERROR: Error received:`, data.message)
           setError(data.message)
           setConnectionStatus('error')
           if (onComplete) {
             onComplete(false, { error: data.message })
           }
         } else if (data.step === 'completed' && data.success) {
-          console.log(`[WS-DEBUG] ✅ Processing completed successfully`)
+          console.log(`[WS-DEBUG] SUCCESS: Processing completed successfully`)
           setConnectionStatus('connected')
           if (onComplete) {
             onComplete(true, data.result)
           }
         } else {
-          console.log(`[WS-DEBUG] 🔄 Progress update: ${data.progress}% - ${data.step} - ${data.message}`)
+          // Clear error state when receiving normal progress messages
+          if (error) {
+            setError(null)
+            console.log(`[WS-DEBUG] RECOVERY: Cleared error state - processing resumed`)
+          }
+          console.log(`[WS-DEBUG] PROGRESS: ${data.progress}% - ${data.step} - ${data.message}`)
         }
       } catch (err) {
-        console.error(`[WS-DEBUG] ❌ Failed to parse WebSocket message:`, err)
+        console.error(`[WS-DEBUG] ERROR: Failed to parse WebSocket message:`, err)
         console.error(`[WS-DEBUG] Raw message was:`, event.data)
       }
     }
 
     ws.onerror = (error) => {
-      console.error(`[WS-DEBUG] ❌ WebSocket error:`, error)
-      setConnectionStatus('error')
-      setError('Connection error. Please try again.')
-      if (onComplete) {
-        onComplete(false, { error: 'Connection error. Please try again.' })
+      console.error(`[WS-DEBUG] ERROR: WebSocket error:`, error)
+      // Only set error state if we've been connected and receiving messages
+      // This prevents showing errors during normal connection attempts
+      if (hasReceivedProgress) {
+        setConnectionStatus('error')
+        setError('Connection lost. Reconnecting...')
+      } else {
+        // During initial connection, just log but don't immediately show error
+        console.log(`[WS-DEBUG] CONNECTION: Initial connection attempt failed, WebSocket will retry`)
       }
     }
 
     ws.onclose = (event) => {
-      console.log(`[WS-DEBUG] 🔌 WebSocket connection closed:`, {
+      console.log(`[WS-DEBUG] CLOSED: WebSocket connection closed:`, {
         code: event.code,
         reason: event.reason,
         wasClean: event.wasClean
       })
-      setConnectionStatus('disconnected')
+      
+      // Only show disconnected state if we've successfully connected before
+      if (hasReceivedProgress) {
+        setConnectionStatus('disconnected')
+      }
     }
 
     return () => {
-      console.log(`[WS-DEBUG] 🧹 Cleaning up WebSocket connection for process ${processId}`)
+      console.log(`[WS-DEBUG] CLEANUP: Cleaning up WebSocket connection for process ${processId}`)
+      clearTimeout(connectionTimeout)
       ws.close()
     }
   }, [processId, onComplete])
@@ -147,7 +183,7 @@ export function ProcessingStatus({ processId, onComplete }: ProcessingStatusProp
           <div className="space-y-2">
             <p className="text-sm font-medium text-foreground">Connected! Waiting for processing to start...</p>
             <p className="text-xs text-muted-foreground">Server is initializing your video processing</p>
-            <p className="text-xs text-green-600">✅ Connected | Process ID: {processId}</p>
+            <p className="text-xs text-green-600">SUCCESS: Connected | Process ID: {processId}</p>
           </div>
         </div>
       </div>

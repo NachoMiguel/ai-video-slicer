@@ -81,7 +81,7 @@ class ElevenLabsAccountManager:
                 account['plan_type'] = plan_type
                 account['upgraded_date'] = datetime.now().isoformat()
                 self._save_accounts()
-                print(f"[SUCCESS] Account {account_id} marked as paid ({plan_type} plan)")
+                safe_print(f"[SUCCESS] Account {account_id} marked as paid ({plan_type} plan)")
                 return
         raise ValueError(f"Account id {account_id} not found.")
 
@@ -93,7 +93,7 @@ class ElevenLabsAccountManager:
                 account.pop('plan_type', None)
                 account.pop('upgraded_date', None)
                 self._save_accounts()
-                print(f"[INFO] Account {account_id} marked as free")
+                safe_print(f"[INFO] Account {account_id} marked as free")
                 return
         raise ValueError(f"Account id {account_id} not found.")
 
@@ -105,17 +105,17 @@ class ElevenLabsAccountManager:
             # Sort by credits remaining (descending) and last used (ascending)
             paid_accounts.sort(key=lambda x: (-x['credits_remaining'], x['last_used']))
             best_paid = paid_accounts[0]
-            print(f"[PRIORITY] Using paid account {best_paid['id']} ({best_paid['plan_type']} plan)")
+            safe_print(f"[PRIORITY] Using paid account {best_paid['id']} ({best_paid['plan_type']} plan)")
             return best_paid
         
         # If no paid accounts available, fall back to free accounts
-        print("[FALLBACK] No paid accounts available, trying free accounts...")
+        safe_print("[FALLBACK] No paid accounts available, trying free accounts...")
         free_accounts = self.get_free_accounts()
         if free_accounts:
             # Sort by credits remaining (descending) and last used (ascending)
             free_accounts.sort(key=lambda x: (-x['credits_remaining'], x['last_used']))
             best_free = free_accounts[0]
-            print(f"[WARNING] Using free account {best_free['id']} - may be subject to IP restrictions")
+            safe_print(f"[WARNING] Using free account {best_free['id']} - may be subject to IP restrictions")
             return best_free
         
         # If no valid accounts found
@@ -136,18 +136,18 @@ class ElevenLabsAccountManager:
             
             # Skip invalid accounts but continue rotation
             if not api_key or not email:
-                print(f"[WARNING] Skipping invalid account {account['id']} - missing API key or email")
+                safe_print(f"[WARNING] Skipping invalid account {account['id']} - missing API key or email")
                 attempts += 1
                 continue
             
             # Skip flagged or inactive accounts
             if account.get('flagged', False):
-                print(f"[WARNING] Skipping flagged account {account['id']} - reason: {account.get('flag_reason', 'Unknown')}")
+                safe_print(f"[WARNING] Skipping flagged account {account['id']} - reason: {account.get('flag_reason', 'Unknown')}")
                 attempts += 1
                 continue
             
             if account.get('inactive', False):
-                print(f"[WARNING] Skipping inactive account {account['id']} - reason: {account.get('inactive_reason', 'Unknown')}")
+                safe_print(f"[WARNING] Skipping inactive account {account['id']} - reason: {account.get('inactive_reason', 'Unknown')}")
                 attempts += 1
                 continue
             
@@ -185,7 +185,7 @@ class ElevenLabsAccountManager:
                 account['flag_reason'] = reason
                 account['flag_date'] = datetime.now().isoformat()
                 self._save_accounts()
-                print(f"[WARNING] Account {account_id} flagged for suspicious activity: {reason}")
+                safe_print(f"[WARNING] Account {account_id} flagged for suspicious activity: {reason}")
                 return
         raise ValueError(f"Account id {account_id} not found.")
 
@@ -197,7 +197,7 @@ class ElevenLabsAccountManager:
                 account.pop('flag_reason', None)
                 account.pop('flag_date', None)
                 self._save_accounts()
-                print(f"[INFO] Account {account_id} unflagged")
+                safe_print(f"[INFO] Account {account_id} unflagged")
                 return
         raise ValueError(f"Account id {account_id} not found.")
 
@@ -208,7 +208,7 @@ class ElevenLabsAccountManager:
                 account['inactive'] = False
                 account.pop('inactive_reason', None)
                 self._save_accounts()
-                print(f"[INFO] Account {account_id} reactivated")
+                safe_print(f"[INFO] Account {account_id} reactivated")
                 return
         raise ValueError(f"Account id {account_id} not found.")
 
@@ -243,37 +243,37 @@ class ElevenLabsAccountManager:
         """Print a formatted account status summary"""
         summary = self.get_account_status_summary()
         
-        print("\n" + "="*60)
-        print("🔍 ELEVENLABS ACCOUNT STATUS SUMMARY")
-        print("="*60)
-        print(f"📊 Total Accounts: {summary['total_accounts']}")
-        print(f"💳 Paid Accounts: {summary['paid_accounts']} ({summary['total_paid_credits']:,} credits)")
-        print(f"🆓 Free Accounts: {summary['free_accounts']} ({summary['total_free_credits']:,} credits)")
-        print(f"🚫 Flagged Accounts: {summary['flagged_accounts']}")
-        print(f"💤 Inactive Accounts: {summary['inactive_accounts']}")
-        print(f"💎 Total Available Credits: {summary['total_credits']:,}")
+        safe_print("\n" + "="*60)
+        safe_print("[?] ELEVENLABS ACCOUNT STATUS SUMMARY")
+        safe_print("="*60)
+        safe_print(f"[?] Total Accounts: {summary['total_accounts']}")
+        safe_print(f"[?] Paid Accounts: {summary['paid_accounts']} ({summary['total_paid_credits']:,} credits)")
+        safe_print(f"[?] Free Accounts: {summary['free_accounts']} ({summary['total_free_credits']:,} credits)")
+        safe_print(f"[?] Flagged Accounts: {summary['flagged_accounts']}")
+        safe_print(f"[?] Inactive Accounts: {summary['inactive_accounts']}")
+        safe_print(f"[?] Total Available Credits: {summary['total_credits']:,}")
         
         if summary['paid_account_details']:
-            print("\n💳 PAID ACCOUNTS:")
+            safe_print("\n[?] PAID ACCOUNTS:")
             for acc in summary['paid_account_details']:
-                print(f"   Account {acc['id']}: {acc['email']} ({acc['plan_type']}) - {acc['credits_remaining']:,} credits")
+                safe_print(f"   Account {acc['id']}: {acc['email']} ({acc['plan_type']}) - {acc['credits_remaining']:,} credits")
         
         if summary['free_account_details']:
-            print("\n🆓 FREE ACCOUNTS:")
+            safe_print("\n[?] FREE ACCOUNTS:")
             for acc in summary['free_account_details']:
-                print(f"   Account {acc['id']}: {acc['email']} - {acc['credits_remaining']:,} credits")
+                safe_print(f"   Account {acc['id']}: {acc['email']} - {acc['credits_remaining']:,} credits")
         
         if summary['flagged_account_details']:
-            print("\n🚫 FLAGGED ACCOUNTS:")
+            safe_print("\n[?] FLAGGED ACCOUNTS:")
             for acc in summary['flagged_account_details']:
-                print(f"   Account {acc['id']}: {acc['email']} - {acc.get('flag_reason', 'Unknown reason')}")
+                safe_print(f"   Account {acc['id']}: {acc['email']} - {acc.get('flag_reason', 'Unknown reason')}")
         
         if summary['inactive_account_details']:
-            print("\n💤 INACTIVE ACCOUNTS:")
+            safe_print("\n[?] INACTIVE ACCOUNTS:")
             for acc in summary['inactive_account_details']:
-                print(f"   Account {acc['id']}: {acc.get('email', 'No email')} - {acc.get('inactive_reason', 'Unknown reason')}")
+                safe_print(f"   Account {acc['id']}: {acc.get('email', 'No email')} - {acc.get('inactive_reason', 'Unknown reason')}")
         
-        print("="*60)
+        safe_print("="*60)
 
     def get_account_api_key(self, account_id):
         return os.getenv(f"ELEVENLABS_API_KEY_{account_id}")
@@ -286,19 +286,19 @@ class ElevenLabsAccountManager:
         valid_accounts = []
         invalid_accounts = []
         
-        print(f"[DEBUG] Starting validation of {len(self.accounts)} accounts...")
+        safe_print(f"[DEBUG] Starting validation of {len(self.accounts)} accounts...")
         
         for i, account in enumerate(self.accounts):
             account_id = account['id']
-            print(f"[DEBUG] Validating account {account_id} ({i+1}/{len(self.accounts)})...")
+            safe_print(f"[DEBUG] Validating account {account_id} ({i+1}/{len(self.accounts)})...")
             
             api_key = os.getenv(f"ELEVENLABS_API_KEY_{account_id}")
             email = os.getenv(f"ELEVENLABS_EMAIL_{account_id}")
             
-            print(f"[DEBUG] Account {account_id}: API key {'found' if api_key else 'MISSING'}, Email {'found' if email else 'MISSING'}")
+            safe_print(f"[DEBUG] Account {account_id}: API key {'found' if api_key else 'MISSING'}, Email {'found' if email else 'MISSING'}")
             
             if not api_key or not email:
-                print(f"[WARNING] Account {account_id} missing API key or email - marking as inactive")
+                safe_print(f"[WARNING] Account {account_id} missing API key or email - marking as inactive")
                 account['inactive'] = True
                 account['inactive_reason'] = "Missing API key or email in .env file"
                 invalid_accounts.append(account_id)
@@ -309,19 +309,19 @@ class ElevenLabsAccountManager:
             if account.get('inactive', False) and account.get('inactive_reason') == "Missing API key or email in .env file":
                 account['inactive'] = False
                 account.pop('inactive_reason', None)
-                print(f"[INFO] Account {account_id} reactivated - API key and email now present")
+                safe_print(f"[INFO] Account {account_id} reactivated - API key and email now present")
             
             if skip_api_test:
-                print(f"[DEBUG] Skipping API test for account {account_id}")
+                safe_print(f"[DEBUG] Skipping API test for account {account_id}")
                 valid_accounts.append(account)
                 continue
             
             # Test the API key with a simple request
             try:
-                print(f"[DEBUG] Testing API key for account {account_id}...")
+                safe_print(f"[DEBUG] Testing API key for account {account_id}...")
                 headers = {'xi-api-key': api_key}
                 response = requests.get('https://api.elevenlabs.io/v1/user', headers=headers, timeout=15)
-                print(f"[DEBUG] Account {account_id} API response: {response.status_code}")
+                safe_print(f"[DEBUG] Account {account_id} API response: {response.status_code}")
                 
                 if response.status_code == 200:
                     user_data = response.json()
@@ -331,25 +331,25 @@ class ElevenLabsAccountManager:
                     if plan_info.get('tier') != 'free':
                         account['is_paid'] = True
                         account['plan_type'] = plan_info.get('tier', 'starter')
-                        print(f"[SUCCESS] Account {account_id} ({email}) validated - PAID ({account['plan_type']})")
+                        safe_print(f"[SUCCESS] Account {account_id} ({email}) validated - PAID ({account['plan_type']})")
                     else:
                         account['is_paid'] = account.get('is_paid', False)  # Keep existing setting
-                        print(f"[SUCCESS] Account {account_id} ({email}) validated - FREE")
+                        safe_print(f"[SUCCESS] Account {account_id} ({email}) validated - FREE")
                     
                     valid_accounts.append(account)
                 elif response.status_code == 401:
-                    print(f"[WARNING] Account {account_id} has invalid API key - marking as inactive")
+                    safe_print(f"[WARNING] Account {account_id} has invalid API key - marking as inactive")
                     account['inactive'] = True
                     account['inactive_reason'] = "Invalid API key"
                     invalid_accounts.append(account_id)
                     valid_accounts.append(account)  # Keep the account but mark as inactive
                 else:
-                    print(f"[WARNING] Account {account_id} returned status {response.status_code} - keeping but may have issues")
+                    safe_print(f"[WARNING] Account {account_id} returned status {response.status_code} - keeping but may have issues")
                     valid_accounts.append(account)
                     
             except Exception as e:
-                print(f"[WARNING] Could not validate account {account_id}: {e} - keeping in rotation")
-                print(f"[DEBUG] Full error details: {type(e).__name__}: {str(e)}")
+                safe_print(f"[WARNING] Could not validate account {account_id}: {e} - keeping in rotation")
+                safe_print(f"[DEBUG] Full error details: {type(e).__name__}: {str(e)}")
                 valid_accounts.append(account)
                 
             # Add a small delay between API calls to avoid rate limiting
@@ -364,7 +364,7 @@ class ElevenLabsAccountManager:
         
         active_accounts = len([acc for acc in valid_accounts if not acc.get('inactive', False)])
         if invalid_accounts:
-            print(f"[INFO] Marked {len(invalid_accounts)} accounts as inactive. {active_accounts} active accounts, {self.total_accounts} total accounts.")
+            safe_print(f"[INFO] Marked {len(invalid_accounts)} accounts as inactive. {active_accounts} active accounts, {self.total_accounts} total accounts.")
         
         return len(valid_accounts), invalid_accounts
 
@@ -406,11 +406,11 @@ def synthesize_chunks_with_account_switching(chunks, voice_id, output_dir, accou
                 plan_type = account.get('plan_type', 'free')
                 
                 if is_paid:
-                    print(f'[PRIORITY] Using paid account {account_id} ({account["email"]}) - {plan_type} plan for chunk {idx+1}')
+                    safe_print(f'[PRIORITY] Using paid account {account_id} ({account["email"]}) - {plan_type} plan for chunk {idx+1}')
                 else:
-                    print(f'[FALLBACK] Using free account {account_id} ({account["email"]}) for chunk {idx+1}, attempt {attempts+1}/{max_attempts}')
+                    safe_print(f'[FALLBACK] Using free account {account_id} ({account["email"]}) for chunk {idx+1}, attempt {attempts+1}/{max_attempts}')
             except ValueError as e:
-                print(f'[ERROR] Failed to get next account: {e}')
+                safe_print(f'[ERROR] Failed to get next account: {e}')
                 break
             headers = {
                 'xi-api-key': api_key,
@@ -427,7 +427,7 @@ def synthesize_chunks_with_account_switching(chunks, voice_id, output_dir, accou
             try:
                 response = requests.post(url, headers=headers, json=data)
             except Exception as e:
-                print(f'[ERROR] Network or request error for chunk {idx+1}: {e}')
+                safe_print(f'[ERROR] Network or request error for chunk {idx+1}: {e}')
                 break
             if response.status_code == 200:
                 audio_path = os.path.join(output_dir, f'chunk_{idx+1}.mp3')
@@ -458,12 +458,12 @@ def synthesize_chunks_with_account_switching(chunks, voice_id, output_dir, accou
                     # Check for suspicious activity flag
                     if 'unusual_activity' in error_message or 'detected_unusual_activity' in error_message:
                         if is_paid:
-                            print(f"[CRITICAL] Paid account {account_id} flagged for unusual activity - this should not happen!")
+                            safe_print(f"[CRITICAL] Paid account {account_id} flagged for unusual activity - this should not happen!")
                         account_manager.flag_account_as_suspicious(account_id, "Unusual activity detected by ElevenLabs")
                     
                     # Check for VPN/Proxy detection on free accounts
                     if ('proxy' in error_message or 'vpn' in error_message) and not is_paid:
-                        print(f"[IP-BAN] Free account {account_id} blocked due to VPN/Proxy detection")
+                        safe_print(f"[IP-BAN] Free account {account_id} blocked due to VPN/Proxy detection")
                         account_manager.flag_account_as_suspicious(account_id, "VPN/Proxy detected - upgrade to paid plan recommended")
                 elif response.status_code == 402 or 'insufficient' in error_message or 'credit' in error_message or 'quota' in error_message:
                     should_switch_account = True
@@ -482,17 +482,17 @@ def synthesize_chunks_with_account_switching(chunks, voice_id, output_dir, accou
                     error_reason = f"Unexpected error ({response.status_code})"
                 
                 if should_switch_account:
-                    print(f'[WARNING] {error_reason} for account {account_id} on chunk {idx+1}, switching account.')
-                    print(f'[DEBUG] Error details: {response.status_code} - {error_text[:200]}...')
+                    safe_print(f'[WARNING] {error_reason} for account {account_id} on chunk {idx+1}, switching account.')
+                    safe_print(f'[DEBUG] Error details: {response.status_code} - {error_text[:200]}...')
                     # Fix: Convert account_id (1-based) to array index (0-based) correctly
                     account_manager.last_account_index = (account_id - 1) % account_manager.total_accounts
                     attempts += 1
                 else:
-                    print(f'[ERROR] {error_reason} for chunk {idx+1}, stopping attempts.')
-                    print(f'[ERROR] Full error: {response.status_code} {error_text}')
+                    safe_print(f'[ERROR] {error_reason} for chunk {idx+1}, stopping attempts.')
+                    safe_print(f'[ERROR] Full error: {response.status_code} {error_text}')
                     break
         if not success:
-            print(f'[ERROR] Failed to synthesize chunk {idx+1} after trying all accounts.')
+            safe_print(f'[ERROR] Failed to synthesize chunk {idx+1} after trying all accounts.')
             audio_files.append(None)
             chunk_account_map.append(None)
     return audio_files, chunk_account_map, account_usage
@@ -505,7 +505,7 @@ def verify_full_script_coverage(audio_files):
     """
     missing_indices = [i for i, path in enumerate(audio_files) if path is None or not os.path.exists(path)]
     if missing_indices:
-        print(f'[WARNING] Missing audio for chunks: {missing_indices}')
+        safe_print(f'[WARNING] Missing audio for chunks: {missing_indices}')
     return (len(missing_indices) == 0, missing_indices)
 
 def concatenate_audio_files(audio_files, output_path):
@@ -516,7 +516,7 @@ def concatenate_audio_files(audio_files, output_path):
     """
     valid_files = [f for f in audio_files if f and os.path.exists(f)]
     if not valid_files:
-        print('[ERROR] No valid audio files to concatenate.')
+        safe_print('[ERROR] No valid audio files to concatenate.')
         raise ValueError("No valid audio files to concatenate.")
     list_file = output_path + '_inputs.txt'
     try:
@@ -530,7 +530,7 @@ def concatenate_audio_files(audio_files, output_path):
             .run(overwrite_output=True, quiet=True)
         )
     except Exception as e:
-        print(f'[ERROR] Audio concatenation failed: {e}')
+        safe_print(f'[ERROR] Audio concatenation failed: {e}')
         raise
     finally:
         if os.path.exists(list_file):

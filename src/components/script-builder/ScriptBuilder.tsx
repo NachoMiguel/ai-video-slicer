@@ -109,7 +109,7 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
       setAvailableScripts(data.scripts || []);
       
       if (data.scripts && data.scripts.length > 0) {
-        console.log(`✅ Found ${data.scripts.length} saved scripts for skip mode`);
+        console.log(`[SUCCESS] Found ${data.scripts.length} saved scripts for skip mode`);
       }
       
     } catch (err) {
@@ -178,13 +178,13 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
           {
             id: Date.now().toString(),
             type: 'system',
-            content: `✅ Loaded script: ${scriptData.title}`,
+            content: `[SUCCESS] Loaded script: ${scriptData.title}`,
             timestamp: new Date()
           },
           {
             id: (Date.now() + 1).toString(),
             type: 'system',
-            content: `📊 Script contains ${scriptData.word_count.toLocaleString()} words and is ready for video processing.`,
+            content: `[STATS] Script contains ${scriptData.word_count.toLocaleString()} words and is ready for video processing.`,
             timestamp: new Date()
           },
           {
@@ -201,7 +201,7 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
       setSession(loadedSession);
       setCurrentStep('building'); // Show the script in the building interface
       
-      console.log(`✅ Script loaded successfully: ${scriptData.title} (${scriptData.word_count} words)`);
+      console.log(`[SUCCESS] Script loaded successfully: ${scriptData.title} (${scriptData.word_count} words)`);
       
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load script');
@@ -459,7 +459,7 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
                     <span className="font-medium text-green-800 dark:text-green-200">Skip Mode Active</span>
                   </div>
                   <div className="flex-1 text-sm text-green-700 dark:text-green-300">
-                    Script loaded successfully • {session.wordCount.toLocaleString()} words • Ready for video processing
+                    Script loaded successfully - {session.wordCount.toLocaleString()} words - Ready for video processing
                   </div>
                   <Button
                     onClick={handleFinalize}
@@ -595,9 +595,9 @@ export function ScriptBuilder({ onFinalize, onBack, className = '' }: ScriptBuil
           {session.id && (
             <p className="text-sm text-muted-foreground mt-1">
               Session: {session.id.slice(0, 8)}
-              {session.entryMethod && ` • ${session.entryMethod.charAt(0).toUpperCase() + session.entryMethod.slice(1)} Mode`}
-              {session.wordCount > 0 && ` • ${session.wordCount} words`}
-              {skipMode && ` • Skip Mode Active`}
+              {session.entryMethod && ` - ${session.entryMethod.charAt(0).toUpperCase() + session.entryMethod.slice(1)} Mode`}
+              {session.wordCount > 0 && ` - ${session.wordCount} words`}
+              {skipMode && ` - Skip Mode Active`}
             </p>
           )}
         </div>

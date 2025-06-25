@@ -91,9 +91,9 @@ export function DevModeToggle({
                 </label>
                 
                 <div className="space-y-1 max-h-32 overflow-y-auto border rounded-md p-1 bg-muted/20">
-                  {availableScripts.map((script) => (
+                  {availableScripts.map((script, index) => (
                     <div
-                      key={script.id}
+                      key={`${script.id}-${script.filename || index}`}
                       className={`p-2 rounded border cursor-pointer transition-all duration-200 ${
                         selectedScript?.id === script.id
                           ? 'bg-primary/10 border-primary shadow-sm'
@@ -144,7 +144,7 @@ export function DevModeToggle({
                 
                 {selectedScript && (
                   <div className="text-xs text-muted-foreground text-center">
-                    Selected: {selectedScript.title} • {selectedScript.word_count.toLocaleString()} words
+                    Selected: {selectedScript.title} - {selectedScript.word_count.toLocaleString()} words
                   </div>
                 )}
               </div>

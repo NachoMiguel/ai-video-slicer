@@ -78,11 +78,11 @@ export function AppModeToggle({ mode, onModeChange, className = '' }: AppModeTog
                 <span className="font-medium text-foreground">Interactive Mode (Recommended)</span>
               </div>
               <ul className="text-sm text-muted-foreground space-y-1 ml-6">
-                <li>• Step-by-step guided workflow</li>
-                <li>• Interactive script building with AI chat</li>
-                <li>• Real-time progress tracking and feedback</li>
-                <li>• Human oversight at every step</li>
-                <li>• Better for long-form content creation</li>
+                <li>- Step-by-step guided workflow</li>
+                <li>- Interactive script building with AI chat</li>
+                <li>- Real-time progress tracking and feedback</li>
+                <li>- Human oversight at every step</li>
+                <li>- Better for long-form content creation</li>
               </ul>
             </div>
             
@@ -92,11 +92,11 @@ export function AppModeToggle({ mode, onModeChange, className = '' }: AppModeTog
                 <span className="font-medium text-foreground">Legacy Mode</span>
               </div>
               <ul className="text-sm text-muted-foreground space-y-1 ml-6">
-                <li>• Original single-step workflow</li>
-                <li>• Automated script generation from YouTube</li>
-                <li>• Direct video processing</li>
-                <li>• Faster for simple use cases</li>
-                <li>• Less control over output</li>
+                <li>- Original single-step workflow</li>
+                <li>- Automated script generation from YouTube</li>
+                <li>- Direct video processing</li>
+                <li>- Faster for simple use cases</li>
+                <li>- Less control over output</li>
               </ul>
             </div>
             

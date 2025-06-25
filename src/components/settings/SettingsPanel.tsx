@@ -475,7 +475,7 @@ export function SettingsPanel({ onClose, className = '' }: SettingsPanelProps) {
                 </div>
                 <ul className="text-sm text-red-700 dark:text-red-300 space-y-1">
                   {validationErrors.map((error, index) => (
-                    <li key={index}>• {error}</li>
+                    <li key={index}>- {error}</li>
                   ))}
                 </ul>
               </div>

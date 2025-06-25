@@ -557,7 +557,7 @@ export function ScriptPanel({
                   <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
                     {bulkSelection.isBulkMode 
                       ? bulkSelection.hasSelections 
-                        ? `${bulkSelection.selectedCount} selections • Ctrl+Click to add more`
+                        ? `${bulkSelection.selectedCount} selections - Ctrl+Click to add more`
                         : "Ctrl+Click to select multiple texts"
                       : "Highlight text to modify"
                     }
@@ -591,25 +591,25 @@ export function ScriptPanel({
                         <div>
                           <strong>Single Mode:</strong>
                           <ul className="space-y-1 text-muted-foreground ml-2">
-                            <li>• Select any text in the script</li>
-                            <li>• Choose from 5 modification options</li>
-                            <li>• Preview changes before applying</li>
+                            <li>- Select any text in the script</li>
+                            <li>- Choose from 5 modification options</li>
+                            <li>- Preview changes before applying</li>
                           </ul>
                         </div>
                         <div>
                           <strong>Bulk Mode (Ctrl+B):</strong>
                           <ul className="space-y-1 text-muted-foreground ml-2">
-                            <li>• Ctrl+Click to select multiple texts</li>
-                            <li>• Apply same modification to all</li>
-                            <li>• Ctrl+A to select all paragraphs</li>
+                            <li>- Ctrl+Click to select multiple texts</li>
+                            <li>- Apply same modification to all</li>
+                            <li>- Ctrl+A to select all paragraphs</li>
                           </ul>
                         </div>
                         <div>
                           <strong>Shortcuts:</strong>
                           <ul className="space-y-1 text-muted-foreground ml-2">
-                            <li>• Ctrl+1-4 for quick actions</li>
-                            <li>• Ctrl+Del to delete</li>
-                            <li>• Esc to cancel</li>
+                            <li>- Ctrl+1-4 for quick actions</li>
+                            <li>- Ctrl+Del to delete</li>
+                            <li>- Esc to cancel</li>
                           </ul>
                         </div>
                       </div>
@@ -890,7 +890,7 @@ export function ScriptPanel({
               onClick={() => setModificationError(null)}
               className="h-6 w-6 p-0 text-white hover:bg-red-600"
             >
-              ×
+              x
             </Button>
           </div>
         </div>

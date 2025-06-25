@@ -2,6 +2,7 @@
 
 import { Select, SelectOption } from '../ui/select';
 import { Slider } from '../ui/slider';
+import { Switch } from '../ui/switch';
 import { useSettingsStore } from '../../stores/settingsStore';
 
 export function AISettings() {
@@ -61,6 +62,28 @@ export function AISettings() {
           unit="words"
         />
       )}
+      
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <label className="text-sm font-medium text-foreground">
+              Skip Character Extraction
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Use predefined characters instead of AI analysis to save OpenAI quota
+            </p>
+          </div>
+          <Switch
+            checked={preferences.skipCharacterExtraction}
+            onCheckedChange={(checked) => updatePreference('skipCharacterExtraction', checked)}
+          />
+        </div>
+        {preferences.skipCharacterExtraction && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            [FAST] Using predefined characters: Steven Seagal, Jean-Claude Van Damme
+          </p>
+        )}
+      </div>
     </div>
   );
 } 

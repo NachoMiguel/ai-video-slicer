@@ -12,10 +12,14 @@ import { ThemeToggle } from '../components/theme-toggle'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { ArrowLeft, Sparkles, Video, FileText, Settings, Youtube } from 'lucide-react'
+import { useSettingsStore } from '../stores/settingsStore'
 
 type WorkflowStep = 'welcome' | 'script-building' | 'video-upload' | 'processing' | 'results' | 'settings'
 
 export default function Home() {
+  // Settings store
+  const { preferences, updatePreference } = useSettingsStore()
+  
   // Main workflow state
   const [currentStep, setCurrentStep] = useState<WorkflowStep>('welcome')
   
@@ -114,7 +118,7 @@ export default function Home() {
       formData.append('prompt', finalizedSession.currentScript)
       formData.append('use_base_prompt', 'false')
       formData.append('use_advanced_assembly', String(useAdvancedAssembly))
-      formData.append('skip_character_extraction', 'true')
+      formData.append('skip_character_extraction', String(preferences.skipCharacterExtraction))
       formData.append('process_id', startData.process_id)  // Pass the process ID
 
       const response = await fetch('http://127.0.0.1:8000/api/process', {
@@ -391,7 +395,7 @@ export default function Home() {
                         <p className="font-medium text-foreground truncate">{video.name}</p>
                         <div className="flex items-center gap-3 text-sm text-muted-foreground">
                           <span>{(video.size / (1024 * 1024)).toFixed(2)} MB</span>
-                          <span>•</span>
+                          <span>-</span>
                           <span>Video {index + 1}</span>
                         </div>
                       </div>
@@ -401,7 +405,7 @@ export default function Home() {
                         onClick={() => setVideos(prev => prev.filter((_, i) => i !== index))}
                         className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
                       >
-                        ✕
+                        X
                       </Button>
                     </div>
                   ))}
@@ -454,6 +458,40 @@ export default function Home() {
                           {useAdvancedAssembly ? 'Advanced' : 'Simple'}
                         </span>
                       </label>
+                    </div>
+                    
+                    {/* Character Extraction Setting */}
+                    <div className="flex items-center justify-between p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                      <div className="flex items-center gap-3">
+                        <div className="text-amber-600 dark:text-amber-400 text-lg">
+                          {preferences.skipCharacterExtraction ? '[FAST]' : '[AI]'}
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                            Character Analysis
+                          </div>
+                          <div className="text-xs text-amber-700 dark:text-amber-300">
+                            {preferences.skipCharacterExtraction 
+                              ? 'Using predefined: Jean-Claude Van Damme, Steven Seagal'
+                              : 'AI will analyze script for character extraction'
+                            }
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={preferences.skipCharacterExtraction}
+                            onChange={(e) => updatePreference('skipCharacterExtraction', e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-300/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                          <span className="ml-3 text-sm font-medium text-amber-800 dark:text-amber-200">
+                            {preferences.skipCharacterExtraction ? 'Skip' : 'AI-Powered'}
+                          </span>
+                        </label>
+                      </div>
                     </div>
                     
                     <Button
@@ -544,13 +582,13 @@ export default function Home() {
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h2 className="text-3xl font-bold text-foreground">Your Video is Ready! 🎉</h2>
+        <h2 className="text-3xl font-bold text-foreground">Your Video is Ready! [DONE]</h2>
         <p className="text-muted-foreground">
           AI has successfully assembled your video based on your script. Review and download below.
         </p>
         <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 max-w-2xl mx-auto">
           <p className="text-sm text-blue-700 dark:text-blue-300">
-            📁 <strong>For Testing:</strong> Your video has also been automatically saved to your Downloads folder for easy access!
+            [FOLDER] <strong>For Testing:</strong> Your video has also been automatically saved to your Downloads folder for easy access!
           </p>
         </div>
       </div>
@@ -586,7 +624,7 @@ export default function Home() {
                     ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
                     : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
                 }`}>
-                  {result.assemblyType === 'advanced' ? '🤖 Advanced Assembly' : '🔧 Simple Assembly'}
+                  {result.assemblyType === 'advanced' ? '[AI] Advanced Assembly' : '[TOOL] Simple Assembly'}
                 </span>
               </div>
             )}

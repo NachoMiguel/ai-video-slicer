@@ -287,7 +287,7 @@ export function ScriptAnalysisDisplay({
                     <ul className="text-xs space-y-1">
                       {section.suggestions.map((suggestion, idx) => (
                         <li key={idx} className="flex items-start gap-2 text-muted-foreground">
-                          <span className="text-yellow-500 mt-0.5">•</span>
+                          <span className="text-yellow-500 mt-0.5">-</span>
                           {suggestion}
                         </li>
                       ))}

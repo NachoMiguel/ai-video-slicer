@@ -22,7 +22,7 @@ try:
     import face_recognition
     FACE_RECOGNITION_AVAILABLE = True
 except ImportError:
-    print("Warning: face_recognition library not available, using OpenCV only")
+    safe_print("Warning: face_recognition library not available, using OpenCV only")
     FACE_RECOGNITION_AVAILABLE = False
     
 import numpy as np
@@ -64,11 +64,39 @@ except ImportError:
         update_accounts_usage_from_dict
     )
 
+# Import Unicode-safe logging
+try:
+    from unicode_safe_logger import safe_print, log_success, log_error, log_warning, log_info, setup_unicode_safe_logging
+except ImportError:
+    # Fallback functions if unicode_safe_logger is not available
+    def safe_print(*args, **kwargs):
+        print(*args, **kwargs)
+    def log_success(msg): print(f"[SUCCESS] {msg}")
+    def log_error(msg): print(f"[ERROR] {msg}")
+    def log_warning(msg): print(f"[WARNING] {msg}")
+    def log_info(msg): print(f"[INFO] {msg}")
+    def setup_unicode_safe_logging(): pass
+
+# Import Critical Failure Monitor
+try:
+    from critical_failure_monitor import setup_critical_failure_monitoring, check_critical_failure, emergency_shutdown
+except ImportError:
+    # Fallback functions if critical_failure_monitor is not available
+    def setup_critical_failure_monitoring(): pass
+    def check_critical_failure(msg, error=None): return False
+    def emergency_shutdown(reason): pass
+
 # Load environment variables from backend/.env file
 env_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(env_path)
-print(f"[ENV] Loading environment from: {env_path}")
-print(f"[ENV] File exists: {os.path.exists(env_path)}")
+safe_print(f"[ENV] Loading environment from: {env_path}")
+safe_print(f"[ENV] File exists: {os.path.exists(env_path)}")
+
+# Setup Unicode-safe logging
+setup_unicode_safe_logging()
+
+# Setup critical failure monitoring for credit protection
+setup_critical_failure_monitoring()
 
 # Configure logging with Unicode support
 logging.basicConfig(
@@ -107,7 +135,7 @@ def safe_str(text):
         return safe_text if safe_text else "Unknown_Title"
         
     except Exception as e:
-        print(f"[DEBUG] safe_str exception: {e}")
+        safe_print(f"[DEBUG] safe_str exception: {e}")
         return "ENCODING_ERROR"
 
 # Advanced Assembly Configuration
@@ -253,7 +281,7 @@ def log_assembly_stats(stats: Dict, assembly_type: str):
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],  # Allow all origins for WebSocket compatibility
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -263,17 +291,17 @@ app.add_middleware(
 try:
     # Try to get API key from multiple sources
     api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY_1")
-    print(f"[DEBUG] API key found: {bool(api_key)}")
-    print(f"[DEBUG] API key length: {len(api_key) if api_key else 0}")
+    safe_print(f"[DEBUG] API key found: {bool(api_key)}")
+    safe_print(f"[DEBUG] API key length: {len(api_key) if api_key else 0}")
     if not os.getenv("OPENAI_API_KEY") and os.getenv("OPENAI_API_KEY_1"):
-        print("[DEBUG] Using OPENAI_API_KEY_1 as fallback for character extraction")
+        safe_print("[DEBUG] Using OPENAI_API_KEY_1 as fallback for character extraction")
     
     # Initialize OpenAI client for character extraction and other features
-    print("[INFO] Initializing OpenAI client for character extraction")
+    safe_print("[INFO] Initializing OpenAI client for character extraction")
     client = None
     if True:  # Enable client for character extraction
-        print("[DEBUG] Attempting to initialize OpenAI client...")
-        print(f"[DEBUG] OpenAI version: {openai.__version__}")
+        safe_print("[DEBUG] Attempting to initialize OpenAI client...")
+        safe_print(f"[DEBUG] OpenAI version: {openai.__version__}")
         
         # Check for proxy-related environment variables and clear them temporarily
         proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'OPENAI_PROXY']
@@ -281,25 +309,25 @@ try:
         for var in proxy_vars:
             value = os.getenv(var)
             if value:
-                print(f"[DEBUG] Found proxy env var {var}: {value}")
+                safe_print(f"[DEBUG] Found proxy env var {var}: {value}")
                 original_proxy_values[var] = value
                 # Temporarily remove proxy env vars
                 os.environ.pop(var, None)
-                print(f"[DEBUG] Temporarily removed {var}")
+                safe_print(f"[DEBUG] Temporarily removed {var}")
         
         if not original_proxy_values:
-            print("[DEBUG] No proxy environment variables found")
+            safe_print("[DEBUG] No proxy environment variables found")
         
         # Try to initialize with minimal parameters
         from openai import OpenAI
-        print("[DEBUG] About to call OpenAI constructor...")
+        safe_print("[DEBUG] About to call OpenAI constructor...")
         
         # Try basic initialization after clearing proxy env vars
         try:
             client = OpenAI(api_key=api_key)
         except TypeError as e:
             if "proxies" in str(e):
-                print("[DEBUG] Proxies error persists, using workaround...")
+                safe_print("[DEBUG] Proxies error persists, using workaround...")
                 # Create a simple wrapper that works around the issue
                 
                 class WorkaroundOpenAIClient:
@@ -351,14 +379,14 @@ try:
                         return SimpleResponse(result)
                 
                 client = WorkaroundOpenAIClient(api_key)
-                print("[SUCCESS] Using workaround OpenAI client")
+                safe_print("[SUCCESS] Using workaround OpenAI client")
             else:
                 raise e
-        print("[SUCCESS] OpenAI client initialized successfully")
+        safe_print("[SUCCESS] OpenAI client initialized successfully")
 except Exception as e:
-    print(f"Warning: Could not initialize OpenAI client: {e}")
-    print(f"[DEBUG] Exception type: {type(e)}")
-    print(f"[DEBUG] Exception args: {e.args}")
+    safe_print(f"Warning: Could not initialize OpenAI client: {e}")
+    safe_print(f"[DEBUG] Exception type: {type(e)}")
+    safe_print(f"[DEBUG] Exception args: {e.args}")
     client = None
 
 # Configure Google Custom Search API
@@ -374,21 +402,21 @@ MAX_FACES_PER_IMAGE = int(os.getenv("MAX_FACES_PER_IMAGE", "3"))  # Prefer fewer
 def get_google_search_service():
     """Initialize and return Google Custom Search service."""
     try:
-        print(f"[DEBUG] get_google_search_service called")
-        print(f"[DEBUG] GOOGLE_API_KEY in function: {bool(GOOGLE_API_KEY)}")
-        print(f"[DEBUG] GOOGLE_CSE_ID in function: {bool(GOOGLE_CSE_ID)}")
+        safe_print(f"[DEBUG] get_google_search_service called")
+        safe_print(f"[DEBUG] GOOGLE_API_KEY in function: {bool(GOOGLE_API_KEY)}")
+        safe_print(f"[DEBUG] GOOGLE_CSE_ID in function: {bool(GOOGLE_CSE_ID)}")
         if not GOOGLE_API_KEY or not GOOGLE_CSE_ID:
-            print("Warning: Google API key or CSE ID not found in environment variables")
-            print(f"[DEBUG] GOOGLE_API_KEY value: {GOOGLE_API_KEY}")
-            print(f"[DEBUG] GOOGLE_CSE_ID value: {GOOGLE_CSE_ID}")
+            safe_print("Warning: Google API key or CSE ID not found in environment variables")
+            safe_print(f"[DEBUG] GOOGLE_API_KEY value: {GOOGLE_API_KEY}")
+            safe_print(f"[DEBUG] GOOGLE_CSE_ID value: {GOOGLE_CSE_ID}")
             return None
-        print("[DEBUG] Attempting to build Google Custom Search service...")
+        safe_print("[DEBUG] Attempting to build Google Custom Search service...")
         service = build("customsearch", "v1", developerKey=GOOGLE_API_KEY)
-        print("[DEBUG] Google Custom Search service created successfully")
+        safe_print("[DEBUG] Google Custom Search service created successfully")
         return service
     except Exception as e:
-        print(f"Warning: Could not initialize Google Custom Search service: {e}")
-        print(f"[DEBUG] Exception details: {type(e).__name__}: {str(e)}")
+        safe_print(f"Warning: Could not initialize Google Custom Search service: {e}")
+        safe_print(f"[DEBUG] Exception details: {type(e).__name__}: {str(e)}")
         return None
 
 def detect_faces_in_image(image_path: str) -> Dict[str, any]:
@@ -423,7 +451,7 @@ def detect_faces_in_image(image_path: str) -> Dict[str, any]:
         # Load image
         image = cv2.imread(image_path)
         if image is None:
-            print(f"Could not load image: {image_path}")
+            safe_print(f"Could not load image: {image_path}")
             return {
                 'has_faces': False,
                 'face_count': 0,
@@ -444,10 +472,10 @@ def detect_faces_in_image(image_path: str) -> Dict[str, any]:
                 face_locations = face_recognition.face_locations(rgb_image)
                 method_used = "face_recognition"
             except Exception as e:
-                print(f"face_recognition failed, falling back to OpenCV: {e}")
+                safe_print(f"face_recognition failed, falling back to OpenCV: {e}")
                 method_used = "opencv_fallback"
         elif FACE_DETECTION_METHOD == "face_recognition" and not FACE_RECOGNITION_AVAILABLE:
-            print("face_recognition requested but not available, using OpenCV")
+            safe_print("face_recognition requested but not available, using OpenCV")
             method_used = "opencv_fallback"
         
         # Use OpenCV as fallback or primary method
@@ -476,7 +504,7 @@ def detect_faces_in_image(image_path: str) -> Dict[str, any]:
                 method_used = "opencv" if FACE_DETECTION_METHOD == "opencv" else "opencv_fallback"
                 
             except Exception as e:
-                print(f"OpenCV face detection failed: {e}")
+                safe_print(f"OpenCV face detection failed: {e}")
                 method_used = "error"
         
         # Calculate face sizes and quality metrics
@@ -529,11 +557,11 @@ def detect_faces_in_image(image_path: str) -> Dict[str, any]:
             'quality_score': quality_score if valid_faces else 0.0
         }
         
-        print(f"Face detection: {len(valid_faces)} faces found using {method_used} (quality: {quality_score:.2f})")
+        safe_print(f"Face detection: {len(valid_faces)} faces found using {method_used} (quality: {quality_score:.2f})")
         return result
         
     except Exception as e:
-        print(f"Error in face detection for {image_path}: {e}")
+        safe_print(f"Error in face detection for {image_path}: {e}")
         return {
             'has_faces': False,
             'face_count': 0,
@@ -568,7 +596,7 @@ async def process_transcript_chunks(chunks: List[str], base_prompt: str, client,
     processed_chunks = []
     
     for i, chunk in enumerate(chunks):
-        print(f"[DEBUG] Processing chunk {i+1}/{len(chunks)} ({len(chunk)} characters)")
+        safe_print(f"[DEBUG] Processing chunk {i+1}/{len(chunks)} ({len(chunk)} characters)")
         
         # Build context-aware prompt for this chunk
         if i == 0:
@@ -636,12 +664,12 @@ async def process_transcript_chunks(chunks: List[str], base_prompt: str, client,
             chunk_result = response.choices[0].message.content
             if chunk_result and chunk_result.strip():
                 processed_chunks.append(chunk_result.strip())
-                print(f"[DEBUG] Chunk {i+1} processed: {len(chunk_result)} characters")
+                safe_print(f"[DEBUG] Chunk {i+1} processed: {len(chunk_result)} characters")
             else:
-                print(f"[WARNING] Chunk {i+1} returned empty result")
+                safe_print(f"[WARNING] Chunk {i+1} returned empty result")
                 
         except Exception as chunk_error:
-            print(f"[ERROR] Failed to process chunk {i+1}: {chunk_error}")
+            safe_print(f"[ERROR] Failed to process chunk {i+1}: {chunk_error}")
             # Try with GPT-3.5 as fallback
             try:
                 response = client.chat.completions.create(
@@ -653,11 +681,11 @@ async def process_transcript_chunks(chunks: List[str], base_prompt: str, client,
                 chunk_result = response.choices[0].message.content
                 if chunk_result and chunk_result.strip():
                     processed_chunks.append(chunk_result.strip())
-                    print(f"[DEBUG] Chunk {i+1} processed with GPT-3.5: {len(chunk_result)} characters")
+                    safe_print(f"[DEBUG] Chunk {i+1} processed with GPT-3.5: {len(chunk_result)} characters")
                 else:
-                    print(f"[WARNING] Chunk {i+1} failed completely")
+                    safe_print(f"[WARNING] Chunk {i+1} failed completely")
             except Exception as fallback_error:
-                print(f"[ERROR] Chunk {i+1} failed with both models: {fallback_error}")
+                safe_print(f"[ERROR] Chunk {i+1} failed with both models: {fallback_error}")
     
     # Combine all processed chunks
     if not processed_chunks:
@@ -672,7 +700,7 @@ async def process_transcript_chunks(chunks: List[str], base_prompt: str, client,
             # Add a subtle transition between chunks if needed
             full_script += " " + chunk
     
-    print(f"[DEBUG] Combined script length: {len(full_script)} characters from {len(processed_chunks)} chunks")
+    safe_print(f"[DEBUG] Combined script length: {len(full_script)} characters from {len(processed_chunks)} chunks")
     return full_script
 
 def load_prompt_from_file(prompt_section: str = "Basic YouTube Content Analysis") -> str:
@@ -709,18 +737,18 @@ def load_prompt_from_file(prompt_section: str = "Basic YouTube Content Analysis"
         if not prompt_text:
             raise ValueError("Empty prompt extracted")
             
-        print(f"[SUCCESS] Loaded '{prompt_section}' prompt: {len(prompt_text)} characters")
+        safe_print(f"[SUCCESS] Loaded '{prompt_section}' prompt: {len(prompt_text)} characters")
         return prompt_text
         
     except Exception as e:
-        print(f"[WARNING] Error loading '{prompt_section}' prompt: {e}")
+        safe_print(f"[WARNING] Error loading '{prompt_section}' prompt: {e}")
         # Fallback to a basic prompt if file reading fails
         fallback_prompt = """
         Analyze this YouTube transcript and create 10 detailed bullet points for a compelling script.
         Each bullet point should be engaging and designed for video content creation.
         Focus on creating hooks, storytelling elements, and viewer engagement strategies.
         """
-        print(f"[SUCCESS] Using fallback prompt: {len(fallback_prompt)} characters")
+        safe_print(f"[SUCCESS] Using fallback prompt: {len(fallback_prompt)} characters")
         return fallback_prompt
 
 def get_predefined_characters() -> Dict[str, List[str]]:
@@ -751,7 +779,7 @@ def extract_characters_with_age_context(script: str) -> Dict[str, List[str]]:
     try:
         # Check if OpenAI client is available
         if client is None:
-            print("OpenAI client not available, using fallback character extraction")
+            safe_print("OpenAI client not available, using fallback character extraction")
             return extract_characters_fallback(script)
             
         # Use OpenAI to analyze the script and extract characters with age contexts
@@ -817,15 +845,15 @@ def extract_characters_with_age_context(script: str) -> Dict[str, List[str]]:
                 if normalized_contexts:
                     cleaned_characters[character] = list(set(normalized_contexts))  # Remove duplicates
         
-        print(f"Extracted characters: {cleaned_characters}")
+        safe_print(f"Extracted characters: {cleaned_characters}")
         return cleaned_characters
         
     except json.JSONDecodeError as e:
-        print(f"Error parsing JSON from OpenAI response: {e}")
+        safe_print(f"Error parsing JSON from OpenAI response: {e}")
         # Fallback: try to extract character names manually
         return extract_characters_fallback(script)
     except Exception as e:
-        print(f"Error extracting characters: {e}")
+        safe_print(f"Error extracting characters: {e}")
         return {}
 
 def extract_characters_fallback(script: str) -> Dict[str, List[str]]:
@@ -898,11 +926,11 @@ def extract_characters_fallback(script: str) -> Dict[str, List[str]]:
                     combined_contexts = list(set(existing_contexts + contexts))
                     characters[name] = combined_contexts if combined_contexts else ["any"]
         
-        print(f"Fallback extraction found: {characters}")
+        safe_print(f"Fallback extraction found: {characters}")
         return characters
         
     except Exception as e:
-        print(f"Error in fallback character extraction: {e}")
+        safe_print(f"Error in fallback character extraction: {e}")
         return {}
 
 def download_image(url: str, file_path: str) -> bool:
@@ -919,7 +947,7 @@ def download_image(url: str, file_path: str) -> bool:
         
         # Clean up the URL and validate
         if not url or not url.startswith('http'):
-            print(f"Invalid URL: {url}")
+            safe_print(f"Invalid URL: {url}")
             return False
         
         headers = {
@@ -934,13 +962,13 @@ def download_image(url: str, file_path: str) -> bool:
         
         # Check if response is successful
         if response.status != 200:
-            print(f"HTTP {response.status} for {url}")
+            safe_print(f"HTTP {response.status} for {url}")
             return False
         
         # Check content type
         content_type = response.headers.get('content-type', '').lower()
         if not any(img_type in content_type for img_type in ['image/', 'jpeg', 'jpg', 'png', 'webp']):
-            print(f"Invalid content type '{content_type}' for {url}")
+            safe_print(f"Invalid content type '{content_type}' for {url}")
             return False
         
         # Download image data
@@ -948,7 +976,7 @@ def download_image(url: str, file_path: str) -> bool:
         
         # Validate image data size
         if len(image_data) < 5000:  # At least 5KB for a decent quality image
-            print(f"Image too small ({len(image_data)} bytes): {url}")
+            safe_print(f"Image too small ({len(image_data)} bytes): {url}")
             return False
         
         # Validate the image can be opened and is a real image
@@ -957,17 +985,17 @@ def download_image(url: str, file_path: str) -> bool:
                 # Check image dimensions (should be reasonable for a face)
                 width, height = img.size
                 if width < 100 or height < 100:
-                    print(f"Image too small ({width}x{height}): {url}")
+                    safe_print(f"Image too small ({width}x{height}): {url}")
                     return False
                 
                 if width > 5000 or height > 5000:
-                    print(f"Image too large ({width}x{height}): {url}")
+                    safe_print(f"Image too large ({width}x{height}): {url}")
                     return False
                 
                 # Check aspect ratio (portraits should be roughly square to tall)
                 aspect_ratio = width / height
                 if aspect_ratio > 3 or aspect_ratio < 0.3:
-                    print(f"Unusual aspect ratio ({aspect_ratio:.2f}): {url}")
+                    safe_print(f"Unusual aspect ratio ({aspect_ratio:.2f}): {url}")
                     return False
                 
                 # Convert to RGB if needed and save as high-quality JPEG
@@ -978,7 +1006,7 @@ def download_image(url: str, file_path: str) -> bool:
                 img.save(file_path, 'JPEG', quality=95, optimize=True)
                 
         except Exception as e:
-            print(f"Image validation failed for {url}: {e}")
+            safe_print(f"Image validation failed for {url}: {e}")
             return False
         
         # Phase 4: Face Detection Filter
@@ -987,7 +1015,7 @@ def download_image(url: str, file_path: str) -> bool:
                 face_result = detect_faces_in_image(file_path)
                 
                 if not face_result['has_faces']:
-                    print(f"[REJECT] No faces detected in image from {url[:50]}...")
+                    safe_print(f"[REJECT] No faces detected in image from {url[:50]}...")
                     # Remove the file since it doesn't contain faces
                     try:
                         os.remove(file_path)
@@ -996,11 +1024,11 @@ def download_image(url: str, file_path: str) -> bool:
                     return False
                 
                 # Log face detection results
-                print(f"[FACE] Face detection: {face_result['face_count']} faces, quality: {face_result['quality_score']:.2f}")
+                safe_print(f"[FACE] Face detection: {face_result['face_count']} faces, quality: {face_result['quality_score']:.2f}")
                 
                 # Optionally reject low-quality face images
                 if face_result['quality_score'] < 0.3:
-                    print(f"[REJECT] Low face quality ({face_result['quality_score']:.2f}) from {url[:50]}...")
+                    safe_print(f"[REJECT] Low face quality ({face_result['quality_score']:.2f}) from {url[:50]}...")
                     try:
                         os.remove(file_path)
                     except:
@@ -1008,16 +1036,16 @@ def download_image(url: str, file_path: str) -> bool:
                     return False
                     
             except Exception as e:
-                print(f"[WARN] Face detection error for {url[:50]}...: {repr(e)}")
+                safe_print(f"[WARN] Face detection error for {url[:50]}...: {repr(e)}")
                 # Decide whether to keep or reject images when face detection fails
                 # For now, we'll keep them to avoid losing too many images
                 pass
         
-        print(f"[SUCCESS] Downloaded and validated {len(image_data)} bytes from {url[:50]}...")
+        safe_print(f"[SUCCESS] Downloaded and validated {len(image_data)} bytes from {url[:50]}...")
         return True
             
     except Exception as e:
-        print(f"[ERROR] Error downloading {url[:50]}...: {e}")
+        safe_print(f"[ERROR] Error downloading {url[:50]}...: {e}")
         return False
 
 def collect_celebrity_images(character: str, age_context: str, temp_dir: str, num_images: int = 8) -> List[str]:
@@ -1055,8 +1083,8 @@ def collect_celebrity_images(character: str, age_context: str, temp_dir: str, nu
         else:
             search_query = base_query
             
-        print(f"Searching for {num_images} images: {search_query}")
-        print(f"Face detection {'ENABLED' if ENABLE_FACE_DETECTION else 'DISABLED'}")
+        safe_print(f"Searching for {num_images} images: {search_query}")
+        safe_print(f"Face detection {'ENABLED' if ENABLE_FACE_DETECTION else 'DISABLED'}")
         
         downloaded_images = []
         face_detection_stats = {
@@ -1073,7 +1101,7 @@ def collect_celebrity_images(character: str, age_context: str, temp_dir: str, nu
             image_urls = search_google_images(search_query, search_count)
             
             if image_urls:
-                print(f"Found {len(image_urls)} image URLs from Google Custom Search")
+                safe_print(f"Found {len(image_urls)} image URLs from Google Custom Search")
                 
                 # Shuffle URLs to get variety if we have more than needed
                 if len(image_urls) > num_images:
@@ -1087,41 +1115,41 @@ def collect_celebrity_images(character: str, age_context: str, temp_dir: str, nu
                     try:
                         img_path = char_dir / f"google_search_image_{i+1}.jpg"
                         
-                        print(f"Downloading image {i+1}/{len(image_urls)}: {img_url[:60]}...")
+                        safe_print(f"Downloading image {i+1}/{len(image_urls)}: {img_url[:60]}...")
                         success = download_image(img_url, str(img_path))
                         
                         # Verify image was downloaded and is valid
                         if success and img_path.exists() and img_path.stat().st_size > 5000:
                             downloaded_images.append(str(img_path))
-                            print(f"[SUCCESS] Successfully saved: {img_path.name}")
+                            safe_print(f"[SUCCESS] Successfully saved: {img_path.name}")
                         else:
                             # Clean up failed download
                             if img_path.exists():
                                 img_path.unlink()
-                            print(f"[FAILED] Failed validation: {img_url[:60]}...")
+                            safe_print(f"[FAILED] Failed validation: {img_url[:60]}...")
                         
                         # Small delay to be respectful to servers
                         time.sleep(random.uniform(0.3, 0.7))
                         
                     except Exception as e:
-                        print(f"Failed to download image {i+1}: {e}")
+                        safe_print(f"Failed to download image {i+1}: {e}")
                         continue
                 
-                print(f"Successfully downloaded {len(downloaded_images)}/{num_images} target images for {character} ({age_context})")
+                safe_print(f"Successfully downloaded {len(downloaded_images)}/{num_images} target images for {character} ({age_context})")
                 
                 # If we got at least some images, that's success
                 if len(downloaded_images) > 0:
                     return downloaded_images
                 
             else:
-                print("No image URLs found from Google Custom Search")
+                safe_print("No image URLs found from Google Custom Search")
                 
         except Exception as e:
-            print(f"Error with Google Custom Search: {e}")
+            safe_print(f"Error with Google Custom Search: {e}")
         
         # If Google search didn't work well, try alternative query variations
         if len(downloaded_images) < num_images // 2:  # Less than half the target
-            print(f"Trying alternative search queries for {character}...")
+            safe_print(f"Trying alternative search queries for {character}...")
             
             alternative_queries = [
                 f"{character} celebrity photo high quality",
@@ -1135,7 +1163,7 @@ def collect_celebrity_images(character: str, age_context: str, temp_dir: str, nu
                     break
                     
                 try:
-                    print(f"Trying alternative query: {alt_query}")
+                    safe_print(f"Trying alternative query: {alt_query}")
                     alt_urls = search_google_images(alt_query, 5)
                     
                     for i, img_url in enumerate(alt_urls):
@@ -1147,36 +1175,36 @@ def collect_celebrity_images(character: str, age_context: str, temp_dir: str, nu
                         if download_image(img_url, str(img_path)):
                             if img_path.exists() and img_path.stat().st_size > 5000:
                                 downloaded_images.append(str(img_path))
-                                print(f"✓ Alternative search success: {img_path.name}")
+                                safe_print(f"[OK] Alternative search success: {img_path.name}")
                         
                         time.sleep(random.uniform(0.4, 0.8))
                         
                 except Exception as e:
-                    print(f"[ERROR] Alternative search failed: {e}")
+                    safe_print(f"[ERROR] Alternative search failed: {e}")
                     import traceback
-                    print(f"[DEBUG] Alternative search traceback: {traceback.format_exc()}")
+                    safe_print(f"[DEBUG] Alternative search traceback: {traceback.format_exc()}")
                     continue
         
         # Final status report
         success_rate = len(downloaded_images) / num_images * 100
-        print(f"Final result: {len(downloaded_images)}/{num_images} images ({success_rate:.1f}% success rate)")
+        safe_print(f"Final result: {len(downloaded_images)}/{num_images} images ({success_rate:.1f}% success rate)")
         
         # Face detection statistics
         if ENABLE_FACE_DETECTION and face_detection_stats['total_attempted'] > 0:
             face_success_rate = (face_detection_stats['faces_detected'] / face_detection_stats['total_attempted']) * 100
-            print(f"Face detection stats:")
-            print(f"  - Images processed: {face_detection_stats['total_attempted']}")
-            print(f"  - Faces detected: {face_detection_stats['faces_detected']} ({face_success_rate:.1f}%)")
-            print(f"  - Images rejected: {face_detection_stats['faces_rejected']}")
-            print(f"  - Detection errors: {face_detection_stats['detection_errors']}")
+            safe_print(f"Face detection stats:")
+            safe_print(f"  - Images processed: {face_detection_stats['total_attempted']}")
+            safe_print(f"  - Faces detected: {face_detection_stats['faces_detected']} ({face_success_rate:.1f}%)")
+            safe_print(f"  - Images rejected: {face_detection_stats['faces_rejected']}")
+            safe_print(f"  - Detection errors: {face_detection_stats['detection_errors']}")
         
         # If we got at least 3 images, consider it a success
         if len(downloaded_images) >= 3:
-            print(f"[SUCCESS] Success: Collected {len(downloaded_images)} high-quality images for {character}")
+            safe_print(f"[SUCCESS] Success: Collected {len(downloaded_images)} high-quality images for {character}")
             return downloaded_images
         
         # Fallback to mock images if we couldn't get enough real ones
-        print(f"Insufficient real images ({len(downloaded_images)}), creating mock images for testing...")
+        safe_print(f"Insufficient real images ({len(downloaded_images)}), creating mock images for testing...")
         mock_images = create_mock_images(character, age_context, str(char_dir))
         
         # Combine real and mock images
@@ -1184,7 +1212,7 @@ def collect_celebrity_images(character: str, age_context: str, temp_dir: str, nu
         return all_images[:num_images]  # Return up to the requested number
             
     except Exception as e:
-        print(f"Error in collect_celebrity_images: {e}")
+        safe_print(f"Error in collect_celebrity_images: {e}")
         # Return mock images as last resort
         return create_mock_images(character, age_context, temp_dir)
 
@@ -1200,15 +1228,15 @@ def search_google_images(query: str, count: int = 8) -> List[str]:
         List of image URLs
     """
     try:
-        print(f"[DEBUG] GOOGLE_API_KEY present: {bool(os.getenv('GOOGLE_API_KEY'))}")
-        print(f"[DEBUG] GOOGLE_CSE_ID present: {bool(os.getenv('GOOGLE_CSE_ID'))}")
-        print(f"[DEBUG] GOOGLE_API_KEY value: {os.getenv('GOOGLE_API_KEY')[:20]}..." if os.getenv('GOOGLE_API_KEY') else "[DEBUG] GOOGLE_API_KEY: None")
-        print(f"[DEBUG] GOOGLE_CSE_ID value: {os.getenv('GOOGLE_CSE_ID')}")
+        safe_print(f"[DEBUG] GOOGLE_API_KEY present: {bool(os.getenv('GOOGLE_API_KEY'))}")
+        safe_print(f"[DEBUG] GOOGLE_CSE_ID present: {bool(os.getenv('GOOGLE_CSE_ID'))}")
+        safe_print(f"[DEBUG] GOOGLE_API_KEY value: {os.getenv('GOOGLE_API_KEY')[:20]}..." if os.getenv('GOOGLE_API_KEY') else "[DEBUG] GOOGLE_API_KEY: None")
+        safe_print(f"[DEBUG] GOOGLE_CSE_ID value: {os.getenv('GOOGLE_CSE_ID')}")
         
         # Get Google Custom Search service
         service = get_google_search_service()
         if not service:
-            print("Google Custom Search service not available - falling back to old method")
+            safe_print("Google Custom Search service not available - falling back to old method")
             return search_bing_images_fallback(query, count)
         
         # Check if query already contains portrait headshot terms
@@ -1217,7 +1245,7 @@ def search_google_images(query: str, count: int = 8) -> List[str]:
         else:
             enhanced_query = f"{query} portrait headshot"
         
-        print(f"Searching Google Custom Search for: {enhanced_query}")
+        safe_print(f"Searching Google Custom Search for: {enhanced_query}")
         
         # Execute search with face-specific parameters optimized for AI training
         result = service.cse().list(
@@ -1238,14 +1266,14 @@ def search_google_images(query: str, count: int = 8) -> List[str]:
             for item in result['items']:
                 if 'link' in item:
                     image_urls.append(item['link'])
-                    print(f"Found high-quality image: {item['link'][:80]}...")
+                    safe_print(f"Found high-quality image: {item['link'][:80]}...")
         
-        print(f"Google Custom Search returned {len(image_urls)} image URLs")
+        safe_print(f"Google Custom Search returned {len(image_urls)} image URLs")
         return image_urls
         
     except Exception as e:
-        print(f"Error in Google Custom Search: {e}")
-        print("Falling back to previous search method...")
+        safe_print(f"Error in Google Custom Search: {e}")
+        safe_print("Falling back to previous search method...")
         return search_bing_images_fallback(query, count)
 
 def search_bing_images_fallback(query: str, count: int = 8) -> List[str]:
@@ -1264,7 +1292,7 @@ def search_bing_images_fallback(query: str, count: int = 8) -> List[str]:
         import re
         from urllib.parse import quote_plus
         
-        print(f"Searching for celebrity images: {query}")
+        safe_print(f"Searching for celebrity images: {query}")
         
         # First, try a more targeted search approach for any celebrity
         # Clean the query to focus on the celebrity name and add specific terms
@@ -1332,10 +1360,10 @@ def search_bing_images_fallback(query: str, count: int = 8) -> List[str]:
                                 # Prioritize good sources
                                 if is_good_source:
                                     image_urls.insert(0, decoded_url)  # Insert at beginning for priority
-                                    print(f"Found HIGH-QUALITY image: {decoded_url[:80]}...")
+                                    safe_print(f"Found HIGH-QUALITY image: {decoded_url[:80]}...")
                                 else:
                                     image_urls.append(decoded_url)
-                                    print(f"Found potential image: {decoded_url[:80]}...")
+                                    safe_print(f"Found potential image: {decoded_url[:80]}...")
                                 
                             if len(image_urls) >= count * 5:  # Get more options to filter from
                                 break
@@ -1346,14 +1374,14 @@ def search_bing_images_fallback(query: str, count: int = 8) -> List[str]:
                 if image_urls:
                     # Remove duplicates and return best ones
                     unique_urls = list(dict.fromkeys(image_urls))
-                    print(f"Bing search returned {len(unique_urls)} potential image URLs")
+                    safe_print(f"Bing search returned {len(unique_urls)} potential image URLs")
                     return unique_urls[:count]
         
         except Exception as e:
-            print(f"Bing image search failed: {e}")
+            safe_print(f"Bing image search failed: {e}")
         
         # Fallback: Use a curated list of working celebrity image URLs
-        print("Web search failed - using curated celebrity database")
+        safe_print("Web search failed - using curated celebrity database")
         
         # Curated working celebrity URLs (tested and verified)
         celebrity_database = {
@@ -1393,15 +1421,15 @@ def search_bing_images_fallback(query: str, count: int = 8) -> List[str]:
         query_lower = clean_query.lower()
         for celebrity_name, urls in celebrity_database.items():
             if celebrity_name in query_lower or any(part in query_lower for part in celebrity_name.split()):
-                print(f"Using curated database for: {celebrity_name}")
+                safe_print(f"Using curated database for: {celebrity_name}")
                 return urls[:count]
         
         # If celebrity not in database, return working placeholder URLs for testing
-        print(f"Celebrity '{clean_query}' not in curated database - creating mock images")
+        safe_print(f"Celebrity '{clean_query}' not in curated database - creating mock images")
         return []
             
     except Exception as e:
-        print(f"Error in celebrity image search: {e}")
+        safe_print(f"Error in celebrity image search: {e}")
         return []
 
 def extract_image_urls_from_html(html: str, character: str, age_context: str) -> List[str]:
@@ -1429,11 +1457,11 @@ def extract_image_urls_from_html(html: str, character: str, age_context: str) ->
         
         # Remove duplicates and limit
         unique_urls = list(dict.fromkeys(urls))
-        print(f"Found {len(unique_urls)} potential image URLs")
+        safe_print(f"Found {len(unique_urls)} potential image URLs")
         return unique_urls[:10]  # Limit to 10 URLs
         
     except Exception as e:
-        print(f"Error extracting image URLs: {e}")
+        safe_print(f"Error extracting image URLs: {e}")
         return []
 
 def create_placeholder_images(character: str, age_context: str, char_dir: str) -> List[str]:
@@ -1453,11 +1481,11 @@ def create_placeholder_images(character: str, age_context: str, char_dir: str) -
             placeholder_path.touch()  # Create empty file
             placeholders.append(str(placeholder_path))
         
-        print(f"Created {len(placeholders)} placeholder images for {character} ({age_context})")
+        safe_print(f"Created {len(placeholders)} placeholder images for {character} ({age_context})")
         return placeholders
         
     except Exception as e:
-        print(f"Error creating placeholders: {e}")
+        safe_print(f"Error creating placeholders: {e}")
         return []
 
 def create_mock_images(character: str, age_context: str, char_dir: str) -> List[str]:
@@ -1503,11 +1531,11 @@ def create_mock_images(character: str, age_context: str, char_dir: str) -> List[
             img.save(mock_path, 'JPEG', quality=95)
             mock_images.append(str(mock_path))
         
-        print(f"[MOCK] Created {len(mock_images)} mock images for {character} ({age_context})")
+        safe_print(f"[MOCK] Created {len(mock_images)} mock images for {character} ({age_context})")
         return mock_images
         
     except Exception as e:
-        print(f"[ERROR] Error creating mock images: {repr(e)}")
+        safe_print(f"[ERROR] Error creating mock images: {repr(e)}")
         # Fallback: create simple files
         try:
             mock_images = []
@@ -1559,13 +1587,13 @@ def setup_face_recognition_database(characters: Dict[str, List[str]], temp_dir: 
                         'age_context': age_context,
                         'encodings': []  # Will be populated when face_recognition is available
                     }
-                    print(f"Added {len(images)} images for {key}")
+                    safe_print(f"Added {len(images)} images for {key}")
         
-        print(f"Face recognition database setup complete with {len(face_database)} entries")
+        safe_print(f"Face recognition database setup complete with {len(face_database)} entries")
         return face_database
         
     except Exception as e:
-        print(f"Error setting up face recognition database: {e}")
+        safe_print(f"Error setting up face recognition database: {e}")
         return {}
 
 # ========================================
@@ -1592,7 +1620,7 @@ def generate_project_face_encodings(image_paths: List[str], entity_name: str) ->
         }
     """
     try:
-        print(f"Generating face encodings for {entity_name} from {len(image_paths)} images...")
+        safe_print(f"Generating face encodings for {entity_name} from {len(image_paths)} images...")
         
         encodings = []
         encoding_quality = []
@@ -1609,7 +1637,7 @@ def generate_project_face_encodings(image_paths: List[str], entity_name: str) ->
                     face_locations = face_recognition.face_locations(image)
                     
                     if not face_locations:
-                        print(f"  No faces found in {os.path.basename(img_path)}")
+                        safe_print(f"  No faces found in {os.path.basename(img_path)}")
                         continue
                     
                     total_faces_found += len(face_locations)
@@ -1620,7 +1648,7 @@ def generate_project_face_encodings(image_paths: List[str], entity_name: str) ->
                     # Use OpenCV fallback for face detection and encoding simulation
                     image = cv2.imread(img_path)
                     if image is None:
-                        print(f"  Could not load image: {os.path.basename(img_path)}")
+                        safe_print(f"  Could not load image: {os.path.basename(img_path)}")
                         continue
                     
                     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -1628,7 +1656,7 @@ def generate_project_face_encodings(image_paths: List[str], entity_name: str) ->
                     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(50, 50))
                     
                     if len(faces) == 0:
-                        print(f"  No faces found in {os.path.basename(img_path)}")
+                        safe_print(f"  No faces found in {os.path.basename(img_path)}")
                         continue
                     
                     total_faces_found += len(faces)
@@ -1660,10 +1688,10 @@ def generate_project_face_encodings(image_paths: List[str], entity_name: str) ->
                     encoding_quality.append(quality_score)
                     valid_image_paths.append(img_path)
                     
-                    print(f"  ✓ Face encoding generated from {os.path.basename(img_path)} (quality: {quality_score:.2f})")
+                    safe_print(f"  [OK] Face encoding generated from {os.path.basename(img_path)} (quality: {quality_score:.2f})")
                 
             except Exception as e:
-                print(f"  [ERROR] Error processing {os.path.basename(img_path)}: {e}")
+                safe_print(f"  [ERROR] Error processing {os.path.basename(img_path)}: {e}")
                 continue
         
         result = {
@@ -1675,15 +1703,15 @@ def generate_project_face_encodings(image_paths: List[str], entity_name: str) ->
             'valid_encodings': len(encodings)
         }
         
-        print(f"Face encoding generation complete for {entity_name}:")
-        print(f"  - Total faces found: {total_faces_found}")
-        print(f"  - Valid encodings: {len(encodings)}")
-        print(f"  - Average quality: {np.mean(encoding_quality):.2f}" if encoding_quality else "  - No valid encodings")
+        safe_print(f"Face encoding generation complete for {entity_name}:")
+        safe_print(f"  - Total faces found: {total_faces_found}")
+        safe_print(f"  - Valid encodings: {len(encodings)}")
+        safe_print(f"  - Average quality: {np.mean(encoding_quality):.2f}" if encoding_quality else "  - No valid encodings")
         
         return result
         
     except Exception as e:
-        print(f"Error generating face encodings for {entity_name}: {e}")
+        safe_print(f"Error generating face encodings for {entity_name}: {e}")
         return {
             'entity_name': entity_name,
             'encodings': [],
@@ -1715,7 +1743,7 @@ def create_project_face_registry(characters: Dict[str, List[str]], temp_dir: str
         }
     """
     try:
-        print("Creating temporary face registry for current project...")
+        safe_print("Creating temporary face registry for current project...")
         
         face_registry = {}
         total_entities = 0
@@ -1727,14 +1755,14 @@ def create_project_face_registry(characters: Dict[str, List[str]], temp_dir: str
                 entity_key = f"{character.replace(' ', '_').lower()}_{age_context}"
                 total_entities += 1
                 
-                print(f"\nProcessing entity: {character} ({age_context})")
+                safe_print(f"\nProcessing entity: {character} ({age_context})")
                 
                 # FIXED: Collect images first before looking for them
-                print(f"  Collecting images for {character} ({age_context})...")
+                safe_print(f"  Collecting images for {character} ({age_context})...")
                 collected_images = collect_celebrity_images(character, age_context, temp_dir, num_images=8)
                 
                 if not collected_images:
-                    print(f"  No images found for {character} ({age_context})")
+                    safe_print(f"  No images found for {character} ({age_context})")
                     continue
                 
                 # Verify collected images exist and are valid
@@ -1744,10 +1772,10 @@ def create_project_face_registry(characters: Dict[str, List[str]], temp_dir: str
                         image_paths.append(img_path)
                 
                 if not image_paths:
-                    print(f"  No valid image files found for {character} ({age_context})")
+                    safe_print(f"  No valid image files found for {character} ({age_context})")
                     continue
                 
-                print(f"  Successfully collected {len(image_paths)} images for {character} ({age_context})")
+                safe_print(f"  Successfully collected {len(image_paths)} images for {character} ({age_context})")
                 
                 # Generate face encodings for this entity
                 encoding_result = generate_project_face_encodings(
@@ -1767,23 +1795,23 @@ def create_project_face_registry(characters: Dict[str, List[str]], temp_dir: str
                     }
                     
                     total_encodings += encoding_result['valid_encodings']
-                    print(f"  ✓ Added {encoding_result['valid_encodings']} encodings to registry")
+                    safe_print(f"  [OK] Added {encoding_result['valid_encodings']} encodings to registry")
                 else:
-                    print(f"  [ERROR] No valid face encodings generated for {character} ({age_context})")
+                    safe_print(f"  [ERROR] No valid face encodings generated for {character} ({age_context})")
         
         try:
-            print(f"\n[STATS] Project Face Registry Summary:")
+            safe_print(f"\n[STATS] Project Face Registry Summary:")
         except UnicodeEncodeError:
-            print(f"\n[STATS] Project Face Registry Summary:")
-        print(f"  - Total entities processed: {total_entities}")
-        print(f"  - Entities with valid encodings: {len(face_registry)}")
-        print(f"  - Total face encodings: {total_encodings}")
-        print(f"  - Registry entries: {list(face_registry.keys())}")
+            safe_print(f"\n[STATS] Project Face Registry Summary:")
+        safe_print(f"  - Total entities processed: {total_entities}")
+        safe_print(f"  - Entities with valid encodings: {len(face_registry)}")
+        safe_print(f"  - Total face encodings: {total_encodings}")
+        safe_print(f"  - Registry entries: {list(face_registry.keys())}")
         
         return face_registry
         
     except Exception as e:
-        print(f"Error creating project face registry: {e}")
+        safe_print(f"Error creating project face registry: {e}")
         return {}
 
 def validate_face_registry_quality(face_registry: Dict[str, Dict], min_quality: float = 0.3, min_encodings: int = 2) -> Dict[str, Dict]:
@@ -1799,7 +1827,7 @@ def validate_face_registry_quality(face_registry: Dict[str, Dict], min_quality: 
         Filtered face registry with only high-quality, usable face encodings
     """
     try:
-        print(f"Validating face registry quality (min_quality: {min_quality}, min_encodings: {min_encodings})...")
+        safe_print(f"Validating face registry quality (min_quality: {min_quality}, min_encodings: {min_encodings})...")
         
         validated_registry = {}
         removed_entities = []
@@ -1835,7 +1863,7 @@ def validate_face_registry_quality(face_registry: Dict[str, Dict], min_quality: 
                         'average_quality': np.mean(filtered_qualities)
                     }
                     
-                    print(f"  ✓ {entity_name} ({age_context}): {len(filtered_encodings)} high-quality encodings (avg: {np.mean(filtered_qualities):.2f})")
+                    safe_print(f"  [OK] {entity_name} ({age_context}): {len(filtered_encodings)} high-quality encodings (avg: {np.mean(filtered_qualities):.2f})")
                 else:
                     removed_entities.append(f"{entity_name} ({age_context}) - no encodings above quality threshold")
             else:
@@ -1848,22 +1876,22 @@ def validate_face_registry_quality(face_registry: Dict[str, Dict], min_quality: 
                 removed_entities.append(f"{entity_name} ({age_context}) - {', '.join(reason)}")
         
         try:
-            print(f"\n[STATS] Face Registry Validation Results:")
+            safe_print(f"\n[STATS] Face Registry Validation Results:")
         except UnicodeEncodeError:
-            print(f"\n[STATS] Face Registry Validation Results:")
-        print(f"  - Original entities: {len(face_registry)}")
-        print(f"  - Validated entities: {len(validated_registry)}")
-        print(f"  - Removed entities: {len(removed_entities)}")
+            safe_print(f"\n[STATS] Face Registry Validation Results:")
+        safe_print(f"  - Original entities: {len(face_registry)}")
+        safe_print(f"  - Validated entities: {len(validated_registry)}")
+        safe_print(f"  - Removed entities: {len(removed_entities)}")
         
         if removed_entities:
-            print("  - Removal reasons:")
+            safe_print("  - Removal reasons:")
             for reason in removed_entities:
-                print(f"    • {reason}")
+                safe_print(f"    - {reason}")
         
         return validated_registry
         
     except Exception as e:
-        print(f"Error validating face registry quality: {e}")
+        safe_print(f"Error validating face registry quality: {e}")
         return face_registry  # Return original if validation fails
 
 # ========================================
@@ -1897,7 +1925,7 @@ def extract_scene_frames(video_path: str, scene_timestamps: List[tuple], frames_
         }
     """
     try:
-        print(f"Extracting frames from {os.path.basename(video_path)} with {len(scene_timestamps)} scenes...")
+        safe_print(f"Extracting frames from {os.path.basename(video_path)} with {len(scene_timestamps)} scenes...")
         
         from moviepy.editor import VideoFileClip
         import tempfile
@@ -1917,10 +1945,10 @@ def extract_scene_frames(video_path: str, scene_timestamps: List[tuple], frames_
                 scene_duration = end_time - start_time
                 
                 if scene_duration < 0.1:  # Skip very short scenes
-                    print(f"  Skipping very short scene {scene_idx} ({scene_duration:.2f}s)")
+                    safe_print(f"  Skipping very short scene {scene_idx} ({scene_duration:.2f}s)")
                     continue
                 
-                print(f"  Processing scene {scene_idx}: {start_time:.2f}s - {end_time:.2f}s ({scene_duration:.2f}s)")
+                safe_print(f"  Processing scene {scene_idx}: {start_time:.2f}s - {end_time:.2f}s ({scene_duration:.2f}s)")
                 
                 # Calculate frame extraction times
                 if frames_per_scene == 1:
@@ -1950,10 +1978,10 @@ def extract_scene_frames(video_path: str, scene_timestamps: List[tuple], frames_
                             'frame_number': frame_idx
                         })
                         
-                        print(f"    ✓ Extracted frame at {frame_time:.2f}s: {os.path.basename(temp_frame.name)}")
+                        safe_print(f"    [OK] Extracted frame at {frame_time:.2f}s: {os.path.basename(temp_frame.name)}")
                         
                     except Exception as e:
-                        print(f"    [ERROR] Error extracting frame at {frame_time:.2f}s: {e}")
+                        safe_print(f"    [ERROR] Error extracting frame at {frame_time:.2f}s: {e}")
                         continue
                 
                 if frames_data:
@@ -1964,11 +1992,11 @@ def extract_scene_frames(video_path: str, scene_timestamps: List[tuple], frames_
                         'frames': frames_data
                     }
                 
-        print(f"Frame extraction complete: {len(scene_frames)} scenes processed")
+        safe_print(f"Frame extraction complete: {len(scene_frames)} scenes processed")
         return scene_frames
         
     except Exception as e:
-        print(f"Error extracting scene frames: {e}")
+        safe_print(f"Error extracting scene frames: {e}")
         return {}
 
 def detect_faces_in_scene_frames(scene_frames: Dict[str, Dict]) -> Dict[str, Dict]:
@@ -2000,7 +2028,7 @@ def detect_faces_in_scene_frames(scene_frames: Dict[str, Dict]) -> Dict[str, Dic
         }
     """
     try:
-        print(f"Detecting faces in scene frames from {len(scene_frames)} scenes...")
+        safe_print(f"Detecting faces in scene frames from {len(scene_frames)} scenes...")
         
         scene_face_data = {}
         total_frames = sum(len(scene_data['frames']) for scene_data in scene_frames.values())
@@ -2008,7 +2036,7 @@ def detect_faces_in_scene_frames(scene_frames: Dict[str, Dict]) -> Dict[str, Dic
         total_faces_found = 0
         
         for scene_id, scene_data in scene_frames.items():
-            print(f"\n  Processing {scene_id} ({len(scene_data['frames'])} frames)...")
+            safe_print(f"\n  Processing {scene_id} ({len(scene_data['frames'])} frames)...")
             
             frames_with_faces = []
             
@@ -2058,12 +2086,12 @@ def detect_faces_in_scene_frames(scene_frames: Dict[str, Dict]) -> Dict[str, Dic
                             'faces': faces_in_frame
                         })
                         
-                        print(f"    ✓ Frame {frame_timestamp:.2f}s: {len(faces_in_frame)} faces detected")
+                        safe_print(f"    [OK] Frame {frame_timestamp:.2f}s: {len(faces_in_frame)} faces detected")
                     else:
-                        print(f"    [ERROR] Frame {frame_timestamp:.2f}s: No faces detected")
+                        safe_print(f"    [ERROR] Frame {frame_timestamp:.2f}s: No faces detected")
                 
                 except Exception as e:
-                    print(f"    [ERROR] Error processing frame {frame_timestamp:.2f}s: {e}")
+                    safe_print(f"    [ERROR] Error processing frame {frame_timestamp:.2f}s: {e}")
                     processed_frames += 1
                     continue
             
@@ -2077,18 +2105,18 @@ def detect_faces_in_scene_frames(scene_frames: Dict[str, Dict]) -> Dict[str, Dic
             }
             
             scene_face_count = sum(len(frame['faces']) for frame in frames_with_faces)
-            print(f"    Scene {scene_id}: {len(frames_with_faces)}/{len(scene_data['frames'])} frames with faces ({scene_face_count} total faces)")
+            safe_print(f"    Scene {scene_id}: {len(frames_with_faces)}/{len(scene_data['frames'])} frames with faces ({scene_face_count} total faces)")
         
-        print(f"\n[STATS] Face detection in scenes complete:")
-        print(f"  - Scenes processed: {len(scene_frames)}")
-        print(f"  - Frames processed: {processed_frames}")
-        print(f"  - Total faces found: {total_faces_found}")
-        print(f"  - Scenes with faces: {len([s for s in scene_face_data.values() if s['frames_with_faces']])}")
+        safe_print(f"\n[STATS] Face detection in scenes complete:")
+        safe_print(f"  - Scenes processed: {len(scene_frames)}")
+        safe_print(f"  - Frames processed: {processed_frames}")
+        safe_print(f"  - Total faces found: {total_faces_found}")
+        safe_print(f"  - Scenes with faces: {len([s for s in scene_face_data.values() if s['frames_with_faces']])}")
         
         return scene_face_data
         
     except Exception as e:
-        print(f"Error detecting faces in scene frames: {e}")
+        safe_print(f"Error detecting faces in scene frames: {e}")
         return {}
 
 def match_faces_to_entities(scene_face_data: Dict[str, Dict], face_registry: Dict[str, Dict], similarity_threshold: float = 0.6) -> Dict[str, Dict]:
@@ -2128,10 +2156,10 @@ def match_faces_to_entities(scene_face_data: Dict[str, Dict], face_registry: Dic
         }
     """
     try:
-        print(f"Matching faces to entities using {len(face_registry)} registered entities...")
+        safe_print(f"Matching faces to entities using {len(face_registry)} registered entities...")
         
         if not face_registry:
-            print("No face registry available for matching")
+            safe_print("No face registry available for matching")
             return {}
         
         scene_matching_results = {}
@@ -2139,7 +2167,7 @@ def match_faces_to_entities(scene_face_data: Dict[str, Dict], face_registry: Dic
         total_faces_processed = 0
         
         for scene_id, scene_data in scene_face_data.items():
-            print(f"\n  Matching faces in {scene_id}...")
+            safe_print(f"\n  Matching faces in {scene_id}...")
             
             entity_matches = []
             entity_match_counts = {}
@@ -2212,9 +2240,9 @@ def match_faces_to_entities(scene_face_data: Dict[str, Dict], face_registry: Dic
                         entity_match_counts[entity_key]['similarities'].append(best_similarity)
                         
                         total_matches += 1
-                        print(f"    ✓ {frame_timestamp:.2f}s: {best_match['entity_name']} (similarity: {best_similarity:.2f}, {confidence_level})")
+                        safe_print(f"    [OK] {frame_timestamp:.2f}s: {best_match['entity_name']} (similarity: {best_similarity:.2f}, {confidence_level})")
                     else:
-                        print(f"    [ERROR] {frame_timestamp:.2f}s: No match above threshold ({best_similarity:.2f})")
+                        safe_print(f"    [ERROR] {frame_timestamp:.2f}s: No match above threshold ({best_similarity:.2f})")
             
             # Calculate dominant entities for this scene
             dominant_entities = []
@@ -2242,18 +2270,18 @@ def match_faces_to_entities(scene_face_data: Dict[str, Dict], face_registry: Dic
                 'dominant_entities': dominant_entities
             }
             
-            print(f"    Scene {scene_id}: {len(entity_matches)} matches, dominant: {dominant_entities[0]['entity_name'] if dominant_entities else 'None'}")
+            safe_print(f"    Scene {scene_id}: {len(entity_matches)} matches, dominant: {dominant_entities[0]['entity_name'] if dominant_entities else 'None'}")
         
-        print(f"\n[STATS] Face matching complete:")
-        print(f"  - Scenes processed: {len(scene_face_data)}")
-        print(f"  - Faces processed: {total_faces_processed}")
-        print(f"  - Successful matches: {total_matches}")
-        print(f"  - Match rate: {(total_matches/total_faces_processed*100):.1f}%" if total_faces_processed > 0 else "  - Match rate: 0%")
+        safe_print(f"\n[STATS] Face matching complete:")
+        safe_print(f"  - Scenes processed: {len(scene_face_data)}")
+        safe_print(f"  - Faces processed: {total_faces_processed}")
+        safe_print(f"  - Successful matches: {total_matches}")
+        safe_print(f"  - Match rate: {(total_matches/total_faces_processed*100):.1f}%" if total_faces_processed > 0 else "  - Match rate: 0%")
         
         return scene_matching_results
         
     except Exception as e:
-        print(f"Error matching faces to entities: {e}")
+        safe_print(f"Error matching faces to entities: {e}")
         return {}
 
 # ========================================
@@ -2283,7 +2311,7 @@ def analyze_script_scenes(script_content: str) -> Dict[str, Dict]:
         }
     """
     try:
-        print(f"🎬 Analyzing script content for scene intelligence...")
+        safe_print(f"[VIDEO] Analyzing script content for scene intelligence...")
         
         script_scenes = {}
         
@@ -2329,11 +2357,11 @@ def analyze_script_scenes(script_content: str) -> Dict[str, Dict]:
                 scene_header="MAIN SCENE"
             )
         
-        print(f"[SUCCESS] Script analysis complete: {len(script_scenes)} scenes identified")
+        safe_print(f"[SUCCESS] Script analysis complete: {len(script_scenes)} scenes identified")
         return script_scenes
         
     except Exception as e:
-        print(f"Error analyzing script scenes: {e}")
+        safe_print(f"Error analyzing script scenes: {e}")
         return {}
 
 def analyze_individual_scene(scene_number: int, scene_content: str, scene_header: str) -> Dict:
@@ -2388,7 +2416,7 @@ def analyze_individual_scene(scene_number: int, scene_content: str, scene_header
         }
         
     except Exception as e:
-        print(f"Error analyzing individual scene {scene_number}: {e}")
+        safe_print(f"Error analyzing individual scene {scene_number}: {e}")
         return {
             'scene_number': scene_number,
             'scene_description': scene_header,
@@ -2481,7 +2509,7 @@ def map_script_to_video_scenes(script_scenes: Dict[str, Dict], video_scene_match
         }
     """
     try:
-        print(f"🎯 Mapping script scenes to video content...")
+        safe_print(f"[TARGET] Mapping script scenes to video content...")
         
         script_to_video_mapping = {}
         
@@ -2492,7 +2520,7 @@ def map_script_to_video_scenes(script_scenes: Dict[str, Dict], video_scene_match
             entity_to_character[entity_key] = entity_name
         
         for script_scene_id, script_scene in script_scenes.items():
-            print(f"  Analyzing {script_scene_id}...")
+            safe_print(f"  Analyzing {script_scene_id}...")
             
             required_characters = script_scene.get('required_characters', [])
             scene_importance = script_scene.get('importance_score', 0.5)
@@ -2539,18 +2567,18 @@ def map_script_to_video_scenes(script_scenes: Dict[str, Dict], video_scene_match
             
             script_to_video_mapping[script_scene_id] = {
                 'script_info': script_scene,
-                'recommended_video_scenes': video_scene_recommendations[:5],  # Top 5 recommendations
+                'recommended_video_scenes': video_scene_recommendations,
                 'missing_characters': missing_characters,
                 'coverage_analysis': coverage_analysis
             }
             
-            print(f"    ✓ {len(video_scene_recommendations)} video scenes found, {len(missing_characters)} characters missing")
+            safe_print(f"    [OK] {len(video_scene_recommendations)} video scenes found, {len(missing_characters)} characters missing")
         
-        print(f"[SUCCESS] Script-to-video mapping complete: {len(script_to_video_mapping)} script scenes mapped")
+        safe_print(f"[SUCCESS] Script-to-video mapping complete: {len(script_to_video_mapping)} script scenes mapped")
         return script_to_video_mapping
         
     except Exception as e:
-        print(f"Error mapping script to video scenes: {e}")
+        safe_print(f"Error mapping script to video scenes: {e}")
         return {}
 
 def analyze_scene_match(required_characters: List[str], video_scene_data: Dict, entity_to_character: Dict, scene_importance: float) -> Dict:
@@ -2615,7 +2643,7 @@ def analyze_scene_match(required_characters: List[str], video_scene_data: Dict, 
         }
         
     except Exception as e:
-        print(f"Error analyzing scene match: {e}")
+        safe_print(f"Error analyzing scene match: {e}")
         return {
             'match_score': 0.0,
             'character_matches': {},
@@ -2725,7 +2753,7 @@ def generate_scene_recommendations(script_to_video_mapping: Dict[str, Dict]) -> 
         }
     """
     try:
-        print(f"🎬 Generating intelligent scene recommendations...")
+        safe_print(f"[VIDEO] Generating intelligent scene recommendations...")
         
         assembly_plan = []
         quality_scores = []
@@ -2788,10 +2816,10 @@ def generate_scene_recommendations(script_to_video_mapping: Dict[str, Dict]) -> 
             'assembly_feasibility': determine_assembly_feasibility(avg_quality, total_coverage)
         }
         
-        print(f"[SUCCESS] Scene recommendations generated:")
-        print(f"   - Assembly plan: {len(assembly_plan)} scenes")
-        print(f"   - Average quality: {avg_quality:.2f}")
-        print(f"   - Average coverage: {total_coverage:.1f}%")
+        safe_print(f"[SUCCESS] Scene recommendations generated:")
+        safe_print(f"   - Assembly plan: {len(assembly_plan)} scenes")
+        safe_print(f"   - Average quality: {avg_quality:.2f}")
+        safe_print(f"   - Average coverage: {total_coverage:.1f}%")
         
         return {
             'assembly_plan': assembly_plan,
@@ -2801,7 +2829,7 @@ def generate_scene_recommendations(script_to_video_mapping: Dict[str, Dict]) -> 
         }
         
     except Exception as e:
-        print(f"Error generating scene recommendations: {e}")
+        safe_print(f"Error generating scene recommendations: {e}")
         return {
             'assembly_plan': [],
             'quality_assessment': {},
@@ -2876,7 +2904,7 @@ def extract_video_segments(video_path: str, assembly_plan: List[Dict], output_di
         from moviepy.editor import VideoFileClip
         import os
         
-        print(f"🎬 Extracting video segments from {video_path}...")
+        safe_print(f"[VIDEO] Extracting video segments from {video_path}...")
         
         # Create output directory
         os.makedirs(output_dir, exist_ok=True)
@@ -2893,7 +2921,7 @@ def extract_video_segments(video_path: str, assembly_plan: List[Dict], output_di
                 recommended_scene = plan_entry.get('recommended_video_scene')
                 
                 if not recommended_scene:
-                    print(f"  [WARNING] No video scene recommended for {script_scene_id}")
+                    safe_print(f"  [WARNING] No video scene recommended for {script_scene_id}")
                     continue
                 
                 # Extract timing information
@@ -2904,7 +2932,7 @@ def extract_video_segments(video_path: str, assembly_plan: List[Dict], output_di
                 segment_end = min(segment_start + script_duration, video_duration)
                 
                 if segment_start >= video_duration:
-                    print(f"  [WARNING] Segment {segment_id} exceeds video duration")
+                    safe_print(f"  [WARNING] Segment {segment_id} exceeds video duration")
                     continue
                 
                 # Extract segment
@@ -2942,10 +2970,10 @@ def extract_video_segments(video_path: str, assembly_plan: List[Dict], output_di
                         'extraction_status': 'success'
                     }
                     
-                    print(f"  [SUCCESS] Extracted {segment_id}: {segment_start:.1f}s-{segment_end:.1f}s")
+                    safe_print(f"  [SUCCESS] Extracted {segment_id}: {segment_start:.1f}s-{segment_end:.1f}s")
                     
                 except Exception as e:
-                    print(f"  [ERROR] Failed to extract {segment_id}: {e}")
+                    safe_print(f"  [ERROR] Failed to extract {segment_id}: {e}")
                     extracted_segments[segment_id] = {
                         'source_scene_id': recommended_scene,
                         'script_scene_id': script_scene_id,
@@ -2957,11 +2985,11 @@ def extract_video_segments(video_path: str, assembly_plan: List[Dict], output_di
                         'extraction_status': 'failed'
                     }
         
-        print(f"[SUCCESS] Video segment extraction complete: {len(extracted_segments)} segments")
+        safe_print(f"[SUCCESS] Video segment extraction complete: {len(extracted_segments)} segments")
         return extracted_segments
         
     except Exception as e:
-        print(f"Error extracting video segments: {e}")
+        safe_print(f"Error extracting video segments: {e}")
         return {}
 
 def create_scene_transitions(segments: Dict[str, Dict], transition_type: str = "fade") -> List[Dict]:
@@ -2969,7 +2997,7 @@ def create_scene_transitions(segments: Dict[str, Dict], transition_type: str = "
     D2: Create intelligent scene transitions between video segments.
     """
     try:
-        print(f"🎨 Creating scene transitions ({transition_type})...")
+        safe_print(f"[EDIT] Creating scene transitions ({transition_type})...")
         
         transitions = []
         segment_list = list(segments.values())
@@ -2992,13 +3020,13 @@ def create_scene_transitions(segments: Dict[str, Dict], transition_type: str = "
             }
             
             transitions.append(transition)
-            print(f"  [SUCCESS] Transition {i}: {transition_effect} ({transition_duration:.1f}s)")
+            safe_print(f"  [SUCCESS] Transition {i}: {transition_effect} ({transition_duration:.1f}s)")
         
-        print(f"[SUCCESS] Scene transitions created: {len(transitions)} transitions")
+        safe_print(f"[SUCCESS] Scene transitions created: {len(transitions)} transitions")
         return transitions
         
     except Exception as e:
-        print(f"Error creating scene transitions: {e}")
+        safe_print(f"Error creating scene transitions: {e}")
         return []
 
 def determine_transition_duration(current_segment: Dict, next_segment: Dict) -> float:
@@ -3043,7 +3071,7 @@ def assemble_final_video(segments: Dict[str, Dict], transitions: List[Dict], out
         from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip
         import os
         
-        print(f"🎬 Assembling final video: {output_path}")
+        safe_print(f"[VIDEO] Assembling final video: {output_path}")
         
         # Load all video segments
         video_clips = []
@@ -3055,16 +3083,16 @@ def assemble_final_video(segments: Dict[str, Dict], transitions: List[Dict], out
                     clip = VideoFileClip(segment_data['output_path'])
                     video_clips.append(clip)
                     successful_segments.append(segment_data)
-                    print(f"  [SUCCESS] Loaded {segment_id}: {clip.duration:.1f}s")
+                    safe_print(f"  [SUCCESS] Loaded {segment_id}: {clip.duration:.1f}s")
                 except Exception as e:
-                    print(f"  [ERROR] Failed to load {segment_id}: {e}")
+                    safe_print(f"  [ERROR] Failed to load {segment_id}: {e}")
         
         if not video_clips:
             raise Exception("No valid video segments to assemble")
         
         # Apply quality enhancements if requested
         if enhance_quality:
-            print("🎨 Applying quality enhancements...")
+            safe_print("[EDIT] Applying quality enhancements...")
             enhanced_clips = []
             
             for i, clip in enumerate(video_clips):
@@ -3074,12 +3102,12 @@ def assemble_final_video(segments: Dict[str, Dict], transitions: List[Dict], out
             video_clips = enhanced_clips
         
         # Concatenate all clips
-        print("🔗 Concatenating video segments...")
+        safe_print("[CONCAT] Concatenating video segments...")
         final_video = concatenate_videoclips(video_clips, method="compose")
         
         # If audio_file is provided, set it as the audio track
         if audio_file and os.path.exists(audio_file):
-            print(f"🔊 Adding custom audio track: {audio_file}")
+            safe_print(f"[AUDIO] Adding custom audio track: {audio_file}")
             final_audio = AudioFileClip(audio_file)
             final_video = final_video.set_audio(final_audio)
         
@@ -3089,7 +3117,7 @@ def assemble_final_video(segments: Dict[str, Dict], transitions: List[Dict], out
         fps = final_video.fps
         
         # Write final video
-        print("💾 Writing final video file...")
+        safe_print("[SAVE] Writing final video file...")
         final_video.write_videofile(
             output_path,
             codec='libx264',
@@ -3123,17 +3151,17 @@ def assemble_final_video(segments: Dict[str, Dict], transitions: List[Dict], out
             'file_size': os.path.getsize(output_path) if os.path.exists(output_path) else 0
         }
         
-        print(f"[SUCCESS] Video assembly complete!")
-        print(f"   📁 Output: {output_path}")
-        print(f"   [TIME] Duration: {total_duration:.1f}s")
-        print(f"   📐 Resolution: {resolution[0]}x{resolution[1]}")
-        print(f"   [VIDEO] Segments: {len(successful_segments)}/{len(segments)}")
-        print(f"   ⭐ Quality: {assembly_quality:.2f}")
+        safe_print(f"[SUCCESS] Video assembly complete!")
+        safe_print(f"   [FOLDER] Output: {output_path}")
+        safe_print(f"   [TIME] Duration: {total_duration:.1f}s")
+        safe_print(f"   [SIZE] Resolution: {resolution[0]}x{resolution[1]}")
+        safe_print(f"   [VIDEO] Segments: {len(successful_segments)}/{len(segments)}")
+        safe_print(f"   [QUALITY] Quality: {assembly_quality:.2f}")
         
         return result
         
     except Exception as e:
-        print(f"Error assembling final video: {e}")
+        safe_print(f"Error assembling final video: {e}")
         return {
             'status': 'error',
             'error': str(e),
@@ -3154,7 +3182,7 @@ def apply_quality_enhancements(clip, segment_data: Dict):
         return enhanced_clip
         
     except Exception as e:
-        print(f"  [WARNING] Quality enhancement failed: {e}")
+        safe_print(f"  [WARNING] Quality enhancement failed: {e}")
         return clip
 
 def calculate_assembly_quality(segments: List[Dict], total_duration: float) -> float:
@@ -3190,7 +3218,7 @@ def generate_video_metadata(assembly_result: Dict, assembly_plan: List[Dict],
     D4: Generate comprehensive metadata for the assembled video.
     """
     try:
-        print("[STATS] Generating video metadata...")
+        safe_print("[STATS] Generating video metadata...")
         
         metadata = {
             'video_info': {
@@ -3240,11 +3268,11 @@ def generate_video_metadata(assembly_result: Dict, assembly_plan: List[Dict],
             }
             metadata['scene_breakdown'].append(scene_entry)
         
-        print(f"[SUCCESS] Metadata generated for {metadata['video_info']['duration']:.1f}s video")
+        safe_print(f"[SUCCESS] Metadata generated for {metadata['video_info']['duration']:.1f}s video")
         return metadata
         
     except Exception as e:
-        print(f"Error generating video metadata: {e}")
+        safe_print(f"Error generating video metadata: {e}")
         return {'error': str(e)}
 
 # REMOVED: Automatic script generation endpoint - users create scripts interactively now
@@ -3267,7 +3295,7 @@ async def process_videos(
     await update_progress(request_id, "upload", "Initializing video processing...", 0.0)
     
     try:
-        logger.info(f"🎬 Starting video processing request {request_id}")
+        logger.info(f"[VIDEO] Starting video processing request {request_id}")
     except UnicodeEncodeError:
         logger.info(f"[PROCESS] Starting video processing request {request_id}")
     logger.info(f"   Videos: {len(videos)} files")
@@ -3311,7 +3339,7 @@ async def process_videos(
 
         # Create temporary directory for processing
         with tempfile.TemporaryDirectory() as temp_dir:
-            logger.info(f"📁 Created temporary directory: {temp_dir}")
+            logger.info(f"[FOLDER] Created temporary directory: {temp_dir}")
                 
             # Save uploaded videos with error handling
             video_paths = []
@@ -3321,11 +3349,70 @@ async def process_videos(
                     with open(temp_path, "wb") as f:
                         f.write(await video.read())
                     video_paths.append(temp_path)
-                    logger.info(f"💾 Saved video: {video.filename}")
+                    logger.info(f"[SAVE] Saved video: {video.filename}")
                     await update_progress(request_id, "upload", f"Saved video {i+1}/{len(videos)}: {video.filename}", 5.0 + (i+1) * 5.0)
             except Exception as e:
                 logger.error(f"[ERROR] Failed to save videos: {e}")
                 raise HTTPException(status_code=500, detail="Failed to save uploaded videos")
+
+            # Early video validation to prevent credit waste
+            await update_progress(request_id, "validate", "Validating video files...", 10.0)
+            try:
+                from moviepy.editor import VideoFileClip
+                valid_video_count = 0
+                
+                for i, video_path in enumerate(video_paths):
+                    try:
+                        # Test video loading and basic properties
+                        test_clip = VideoFileClip(video_path)
+                        
+                        # Validate basic properties
+                        if test_clip.duration <= 0:
+                            test_clip.close()
+                            raise Exception(f"Video {os.path.basename(video_path)} has invalid duration: {test_clip.duration}")
+                        
+                        if test_clip.size[0] <= 0 or test_clip.size[1] <= 0:
+                            test_clip.close()
+                            raise Exception(f"Video {os.path.basename(video_path)} has invalid dimensions: {test_clip.size}")
+                        
+                        # Test frame access
+                        test_frame = test_clip.get_frame(0)
+                        if test_frame is None:
+                            test_clip.close()
+                            raise Exception(f"Video {os.path.basename(video_path)} cannot provide frames")
+                        
+                        # Test middle frame to ensure video is not corrupted
+                        mid_time = min(test_clip.duration / 2, test_clip.duration - 0.1)
+                        mid_frame = test_clip.get_frame(mid_time)
+                        if mid_frame is None:
+                            test_clip.close()
+                            raise Exception(f"Video {os.path.basename(video_path)} has corrupted frames")
+                        
+                        test_clip.close()
+                        valid_video_count += 1
+                        logger.info(f"[SUCCESS] Video {i+1} validation passed: {os.path.basename(video_path)}")
+                        
+                    except Exception as e:
+                        logger.error(f"[ERROR] Video validation failed for {os.path.basename(video_path)}: {e}")
+                        # Don't immediately fail - try to continue with other videos
+                        continue
+                
+                if valid_video_count == 0:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail="All uploaded videos failed validation. Please upload valid video files."
+                    )
+                elif valid_video_count < len(video_paths):
+                    logger.warning(f"[WARNING] Only {valid_video_count}/{len(video_paths)} videos passed validation")
+                    
+                logger.info(f"[SUCCESS] Video validation complete: {valid_video_count}/{len(video_paths)} videos valid")
+                await update_progress(request_id, "validate", f"Video validation complete: {valid_video_count} valid videos", 12.0)
+                
+            except HTTPException:
+                raise  # Re-raise HTTP exceptions
+            except Exception as e:
+                logger.error(f"[ERROR] Video validation failed: {e}")
+                raise HTTPException(status_code=500, detail=f"Video validation failed: {str(e)}")
 
             # Scene detection with error handling
             await update_progress(request_id, "detect_scenes", "Analyzing video scenes...", 15.0)
@@ -3334,7 +3421,7 @@ async def process_videos(
                 for i, video_path in enumerate(video_paths):
                     scene_list = detect(video_path, ContentDetector())
                     scenes.extend([(video_path, scene) for scene in scene_list])
-                    logger.info(f"🎬 Detected {len(scene_list)} scenes in {os.path.basename(video_path)}")
+                    logger.info(f"[VIDEO] Detected {len(scene_list)} scenes in {os.path.basename(video_path)}")
                     await update_progress(request_id, "detect_scenes", f"Detected {len(scene_list)} scenes in video {i+1}/{len(video_paths)}", 15.0 + (i+1) * 5.0)
                 logger.info(f"[SUCCESS] Total scenes detected: {len(scenes)}")
                 await update_progress(request_id, "detect_scenes", f"Scene detection complete: {len(scenes)} total scenes", 25.0)
@@ -3368,10 +3455,28 @@ async def process_videos(
                 try:
                     # PHASE A: Character Extraction and Face Registry
                     if skip_character_extraction:
-                        # Use predefined characters to avoid OpenAI API calls
+                        # Use predefined characters to avoid OpenAI API calls (but continue with normal flow)
                         characters = get_predefined_characters()
                         logger.info(f"[SUCCESS] Using predefined characters: {list(characters.keys())}")
                         await update_progress(request_id, "extract_characters", f"Using predefined characters: {list(characters.keys())}", 37.0)
+                        
+                        # Create face registry with predefined characters
+                        face_registry = safe_execute_phase(
+                            "Phase A - Face Registry Creation",
+                            create_project_face_registry,
+                            characters=characters,
+                            temp_dir=temp_dir
+                        )
+                        
+                        face_registry = safe_execute_phase(
+                            "Phase A - Face Registry Validation",
+                            validate_face_registry_quality,
+                            face_registry=face_registry,
+                            min_quality=ADVANCED_ASSEMBLY_CONFIG['face_recognition']['min_quality'],
+                            min_encodings=ADVANCED_ASSEMBLY_CONFIG['face_recognition']['min_encodings']
+                        )
+                        
+                        logger.info(f"[SUCCESS] Face registry created with {len(face_registry)} entities")
                     else:
                         # Original character extraction logic
                         characters = safe_execute_phase(
@@ -3665,7 +3770,7 @@ async def process_videos(
                 except Exception as e:
                     logger.error(f"[ERROR] Phase D failed: {e}")
                     phase_errors.append(create_error_metadata(e, "Phase D"))
-                    logger.info("🔄 Falling back to simple assembly")
+                    logger.info("[ROTATE] Falling back to simple assembly")
                     use_advanced_assembly = False
                     assembly_type = "simple_fallback"
 
@@ -3766,27 +3871,122 @@ async def process_videos(
                         
                         logger.info(f"[INFO] Concatenating {len(clips)} video clips...")
                         
-                        # Validate all clips before concatenation
+                        # Enhanced clip validation with smart replacement system
                         valid_clips = []
+                        failed_clips = []
+                        
                         for i, clip in enumerate(clips):
                             if clip is not None and hasattr(clip, 'duration') and clip.duration > 0:
                                 try:
-                                    # Test frame access to ensure clip is valid
+                                    # Enhanced clip validation with multiple frame tests
                                     test_frame = clip.get_frame(0)
-                                    if test_frame is not None:
-                                        valid_clips.append(clip)
-                                        logger.info(f"[SUCCESS] Clip {i} validated")
+                                    if test_frame is not None and test_frame.size > 0:
+                                        # Additional validation: test middle frame
+                                        mid_time = min(clip.duration / 2, clip.duration - 0.1)
+                                        mid_frame = clip.get_frame(mid_time)
+                                        if mid_frame is not None:
+                                            valid_clips.append(clip)
+                                            logger.info(f"[SUCCESS] Clip {i} validated successfully")
+                                        else:
+                                            logger.error(f"[ERROR] Clip {i} failed mid-frame test")
+                                            failed_clips.append(i)
+                                            if clip: clip.close()
                                     else:
-                                        logger.error(f"[ERROR] Clip {i} returned None frame")
+                                        logger.error(f"[ERROR] Clip {i} returned None or empty frame")
+                                        failed_clips.append(i)
                                         if clip: clip.close()
                                 except Exception as e:
                                     logger.error(f"[ERROR] Clip {i} frame test failed: {e}")
+                                    failed_clips.append(i)
                                     if clip: clip.close()
                             else:
                                 logger.error(f"[ERROR] Clip {i} is invalid (None or no duration)")
+                                failed_clips.append(i)
                         
+                        # Smart clip replacement system using available video files
+                        if failed_clips and len(valid_clips) > 0:
+                            logger.info(f"[INFO] Attempting to replace {len(failed_clips)} failed clips with working alternatives")
+                            
+                            # Get available video files from uploaded videos
+                            available_videos = [video_file for video_file in video_files if os.path.exists(video_file)]
+                            
+                            for failed_index in failed_clips:
+                                if len(available_videos) > 1:  # We have alternatives
+                                    # Try to create a replacement clip from another video
+                                    replacement_found = False
+                                    
+                                    for alt_video in available_videos:
+                                        try:
+                                            # Create a replacement clip with similar duration
+                                            alt_clip = VideoFileClip(alt_video)
+                                            
+                                            if alt_clip.duration > 5:  # Ensure it has sufficient duration
+                                                # Extract a segment similar to the failed one
+                                                target_duration = min(30, alt_clip.duration - 1)
+                                                start_time = random.uniform(0, max(0, alt_clip.duration - target_duration))
+                                                
+                                                replacement_clip = alt_clip.subclip(start_time, start_time + target_duration)
+                                                
+                                                # Test the replacement clip
+                                                test_frame = replacement_clip.get_frame(0)
+                                                if test_frame is not None:
+                                                    valid_clips.append(replacement_clip)
+                                                    logger.info(f"[SUCCESS] Replaced failed clip {failed_index} with segment from {os.path.basename(alt_video)}")
+                                                    replacement_found = True
+                                                    alt_clip.close()
+                                                    break
+                                                else:
+                                                    replacement_clip.close()
+                                                    alt_clip.close()
+                                            else:
+                                                alt_clip.close()
+                                                
+                                        except Exception as e:
+                                            logger.warning(f"[WARNING] Failed to create replacement from {alt_video}: {e}")
+                                            continue
+                                    
+                                    if not replacement_found:
+                                        logger.warning(f"[WARNING] Could not find replacement for failed clip {failed_index}")
+                        
+                        # Final fallback: create emergency clips if no valid clips exist
                         if not valid_clips:
-                            raise Exception("No valid video clips after validation")
+                            logger.warning(f"[WARNING] No valid clips found, attempting emergency fallback")
+                            
+                            for video_file in video_files:
+                                if os.path.exists(video_file):
+                                    try:
+                                        emergency_clip = VideoFileClip(video_file)
+                                        if emergency_clip.duration > 10:
+                                            # Create multiple short segments
+                                            segment_duration = min(15, emergency_clip.duration / 3)
+                                            for i in range(min(3, int(emergency_clip.duration / segment_duration))):
+                                                start_time = i * segment_duration
+                                                end_time = start_time + segment_duration
+                                                
+                                                segment = emergency_clip.subclip(start_time, end_time)
+                                                test_frame = segment.get_frame(0)
+                                                
+                                                if test_frame is not None:
+                                                    valid_clips.append(segment)
+                                                    logger.info(f"[SUCCESS] Created emergency segment {i+1}")
+                                                else:
+                                                    segment.close()
+                                            
+                                            emergency_clip.close()
+                                            
+                                            if valid_clips:
+                                                break
+                                        else:
+                                            emergency_clip.close()
+                                            
+                                    except Exception as e:
+                                        logger.error(f"[ERROR] Emergency fallback failed for {video_file}: {e}")
+                                        continue
+                            
+                            if not valid_clips:
+                                raise Exception("No valid video clips after validation and all fallback attempts")
+                        
+                        logger.info(f"[SUCCESS] Final validation complete: {len(valid_clips)} valid clips ready for concatenation")
                         
                         # Concatenate valid clips with error handling
                         try:
@@ -3934,7 +4134,13 @@ async def process_videos(
                         log_assembly_stats(assembly_stats, "simple")
                         
                     except Exception as e:
-                        logger.error(f"[ERROR] Simple assembly failed: {e}")
+                        error_msg = f"Simple assembly failed: {e}"
+                        logger.error(f"[ERROR] {error_msg}")
+                        
+                        # Check for critical failure patterns and shutdown if necessary
+                        if check_critical_failure(error_msg, e):
+                            logger.error("[CRITICAL] Emergency shutdown triggered during video assembly")
+                        
                         raise HTTPException(status_code=500, detail=f"Video assembly failed: {str(e)}")
 
             # COPY TO DOWNLOADS FOLDER
@@ -4008,7 +4214,7 @@ async def process_videos(
                 }
                 
                 try:
-                    logger.info(f"🎉 Video processing completed successfully in {processing_time:.2f}s")
+                    logger.info(f"[DONE] Video processing completed successfully in {processing_time:.2f}s")
                 except UnicodeEncodeError:
                     logger.info(f"[COMPLETE] Video processing completed successfully in {processing_time:.2f}s")
                 logger.info(f"   Assembly type: {assembly_type}")
@@ -4046,7 +4252,7 @@ async def process_videos(
     except Exception as e:
         # Log unexpected errors
         processing_time = (datetime.datetime.now() - processing_start_time).total_seconds()
-        logger.error(f"💥 Unexpected error in video processing (request {request_id}): {e}")
+        logger.error(f"[CRASH] Unexpected error in video processing (request {request_id}): {e}")
         logger.error(f"   Processing time before error: {processing_time:.2f}s")
         logger.error(f"   Traceback: {traceback.format_exc()}")
         
@@ -4073,7 +4279,7 @@ async def analyze_script_scenes_endpoint(request: dict):
         if not script_content:
             return {"success": False, "error": "No script content provided"}
         
-        print("🎬 Starting script scene analysis...")
+        safe_print("[VIDEO] Starting script scene analysis...")
         script_scenes = analyze_script_scenes(script_content)
         
         return {
@@ -4084,7 +4290,7 @@ async def analyze_script_scenes_endpoint(request: dict):
         }
         
     except Exception as e:
-        print(f"Error in script analysis endpoint: {e}")
+        safe_print(f"Error in script analysis endpoint: {e}")
         return {"success": False, "error": str(e)}
 
 @app.post("/api/map-script-to-video")
@@ -4100,7 +4306,7 @@ async def map_script_to_video_endpoint(request: dict):
         if not all([script_scenes, video_scene_matches, face_registry]):
             return {"success": False, "error": "Missing required data: script_scenes, video_scene_matches, or face_registry"}
         
-        print("🎯 Starting script-to-video mapping...")
+        safe_print("[TARGET] Starting script-to-video mapping...")
         script_to_video_mapping = map_script_to_video_scenes(
             script_scenes=script_scenes,
             video_scene_matches=video_scene_matches, 
@@ -4115,7 +4321,7 @@ async def map_script_to_video_endpoint(request: dict):
         }
         
     except Exception as e:
-        print(f"Error in script-to-video mapping endpoint: {e}")
+        safe_print(f"Error in script-to-video mapping endpoint: {e}")
         return {"success": False, "error": str(e)}
 
 @app.post("/api/generate-scene-recommendations")
@@ -4129,7 +4335,7 @@ async def generate_scene_recommendations_endpoint(request: dict):
         if not script_to_video_mapping:
             return {"success": False, "error": "No script-to-video mapping provided"}
         
-        print("🎬 Generating scene recommendations...")
+        safe_print("[VIDEO] Generating scene recommendations...")
         recommendations = generate_scene_recommendations(script_to_video_mapping)
         
         return {
@@ -4140,7 +4346,7 @@ async def generate_scene_recommendations_endpoint(request: dict):
         }
         
     except Exception as e:
-        print(f"Error in scene recommendations endpoint: {e}")
+        safe_print(f"Error in scene recommendations endpoint: {e}")
         return {"success": False, "error": str(e)}
 
 @app.post("/api/phase-c-complete")
@@ -4156,14 +4362,14 @@ async def phase_c_complete_endpoint(request: dict):
         if not all([script_content, video_scene_matches, face_registry]):
             return {"success": False, "error": "Missing required data: script_content, video_scene_matches, or face_registry"}
         
-        print("[START] Starting complete Phase C: Script-to-Scene Intelligence...")
+        safe_print("[START] Starting complete Phase C: Script-to-Scene Intelligence...")
         
         # Step C1: Analyze script scenes
-        print("Step C1: Analyzing script scenes...")
+        safe_print("Step C1: Analyzing script scenes...")
         script_scenes = analyze_script_scenes(script_content)
         
         # Step C2: Map script to video scenes  
-        print("Step C2: Mapping script to video scenes...")
+        safe_print("Step C2: Mapping script to video scenes...")
         script_to_video_mapping = map_script_to_video_scenes(
             script_scenes=script_scenes,
             video_scene_matches=video_scene_matches,
@@ -4171,10 +4377,10 @@ async def phase_c_complete_endpoint(request: dict):
         )
         
         # Step C3: Generate recommendations
-        print("Step C3: Generating scene recommendations...")
+        safe_print("Step C3: Generating scene recommendations...")
         recommendations = generate_scene_recommendations(script_to_video_mapping)
         
-        print("[SUCCESS] Phase C complete!")
+        safe_print("[SUCCESS] Phase C complete!")
         
         return {
             "success": True,
@@ -4195,7 +4401,7 @@ async def phase_c_complete_endpoint(request: dict):
         }
         
     except Exception as e:
-        print(f"Error in Phase C complete endpoint: {e}")
+        safe_print(f"Error in Phase C complete endpoint: {e}")
         return {"success": False, "error": str(e)}
 
 @app.post("/api/extract-video-segments")
@@ -4211,7 +4417,7 @@ async def extract_video_segments_endpoint(request: dict):
         if not all([video_path, assembly_plan]):
             return {"success": False, "error": "Missing required data: video_path or assembly_plan"}
         
-        print("🎬 Starting video segment extraction...")
+        safe_print("[VIDEO] Starting video segment extraction...")
         segments = extract_video_segments(video_path, assembly_plan, output_dir)
         
         return {
@@ -4223,7 +4429,7 @@ async def extract_video_segments_endpoint(request: dict):
         }
         
     except Exception as e:
-        print(f"Error in video segment extraction endpoint: {e}")
+        safe_print(f"Error in video segment extraction endpoint: {e}")
         return {"success": False, "error": str(e)}
 
 @app.post("/api/create-scene-transitions")
@@ -4238,7 +4444,7 @@ async def create_scene_transitions_endpoint(request: dict):
         if not segments:
             return {"success": False, "error": "No segments provided"}
         
-        print("🎨 Creating scene transitions...")
+        safe_print("[EDIT] Creating scene transitions...")
         transitions = create_scene_transitions(segments, transition_type)
         
         return {
@@ -4250,7 +4456,7 @@ async def create_scene_transitions_endpoint(request: dict):
         }
         
     except Exception as e:
-        print(f"Error in scene transitions endpoint: {e}")
+        safe_print(f"Error in scene transitions endpoint: {e}")
         return {"success": False, "error": str(e)}
 
 @app.post("/api/assemble-final-video")
@@ -4267,7 +4473,7 @@ async def assemble_final_video_endpoint(request: dict):
         if not segments:
             return {"success": False, "error": "No segments provided"}
         
-        print("🎬 Starting final video assembly...")
+        safe_print("[VIDEO] Starting final video assembly...")
         assembly_result = assemble_final_video(segments, transitions, output_path, enhance_quality)
         
         return {
@@ -4277,7 +4483,7 @@ async def assemble_final_video_endpoint(request: dict):
         }
         
     except Exception as e:
-        print(f"Error in final video assembly endpoint: {e}")
+        safe_print(f"Error in final video assembly endpoint: {e}")
         return {"success": False, "error": str(e)}
 
 @app.post("/api/generate-video-metadata")
@@ -4294,7 +4500,7 @@ async def generate_video_metadata_endpoint(request: dict):
         if not assembly_result:
             return {"success": False, "error": "No assembly result provided"}
         
-        print("[STATS] Generating video metadata...")
+        safe_print("[STATS] Generating video metadata...")
         metadata = generate_video_metadata(assembly_result, assembly_plan, script_scenes, recommendations)
         
         return {
@@ -4304,7 +4510,7 @@ async def generate_video_metadata_endpoint(request: dict):
         }
         
     except Exception as e:
-        print(f"Error in video metadata generation endpoint: {e}")
+        safe_print(f"Error in video metadata generation endpoint: {e}")
         return {"success": False, "error": str(e)}
 
 @app.post("/api/phase-d-complete")
@@ -4325,25 +4531,25 @@ async def phase_d_complete_endpoint(request: dict):
         if not all([video_path, assembly_plan]):
             return {"success": False, "error": "Missing required data: video_path or assembly_plan"}
         
-        print("[START] Starting complete Phase D: Intelligent Video Assembly...")
+        safe_print("[START] Starting complete Phase D: Intelligent Video Assembly...")
         
         # Step D1: Extract video segments
-        print("Step D1: Extracting video segments...")
+        safe_print("Step D1: Extracting video segments...")
         segments = extract_video_segments(video_path, assembly_plan, output_dir)
         
         # Step D2: Create scene transitions
-        print("Step D2: Creating scene transitions...")
+        safe_print("Step D2: Creating scene transitions...")
         transitions = create_scene_transitions(segments, transition_type)
         
         # Step D3: Assemble final video
-        print("Step D3: Assembling final video...")
+        safe_print("Step D3: Assembling final video...")
         assembly_result = assemble_final_video(segments, transitions, output_path, enhance_quality)
         
         # Step D4: Generate metadata
-        print("Step D4: Generating video metadata...")
+        safe_print("Step D4: Generating video metadata...")
         metadata = generate_video_metadata(assembly_result, assembly_plan, script_scenes, recommendations)
         
-        print("[SUCCESS] Phase D complete!")
+        safe_print("[SUCCESS] Phase D complete!")
         
         return {
             "success": assembly_result.get('status') == 'success',
@@ -4366,8 +4572,18 @@ async def phase_d_complete_endpoint(request: dict):
         }
         
     except Exception as e:
-        print(f"Error in Phase D complete endpoint: {e}")
+        safe_print(f"Error in Phase D complete endpoint: {e}")
         return {"success": False, "error": str(e)}
+
+@app.get("/api/debug/connections")
+async def debug_connections():
+    """Debug endpoint to check WebSocket connection manager state"""
+    return {
+        "active_connections": list(manager.active_connections.keys()),
+        "total_connections": len(manager.active_connections),
+        "manager_instance_id": id(manager),
+        "status": "ok"
+    }
 
 @app.get("/api/health/openai")
 async def health_check_openai():
@@ -4426,7 +4642,7 @@ from fastapi import UploadFile
 async def get_youtube_info(youtube_url: str = Form(...)):
     """Get YouTube video information for preview"""
     try:
-        print(f"[DEBUG] Fetching YouTube info for: {youtube_url}")
+        safe_print(f"[DEBUG] Fetching YouTube info for: {youtube_url}")
         
         # Use yt-dlp to extract video info without downloading
         ydl_opts = {
@@ -4452,7 +4668,7 @@ async def get_youtube_info(youtube_url: str = Form(...)):
             else:
                 views = f"{view_count} views"
             
-            print(f"[DEBUG] Video info extracted: {title}")
+            safe_print(f"[DEBUG] Video info extracted: {title}")
             
             return {
                 "status": "success",
@@ -4465,7 +4681,7 @@ async def get_youtube_info(youtube_url: str = Form(...)):
             }
             
     except Exception as e:
-        print(f"[ERROR] Failed to fetch YouTube info: {e}")
+        safe_print(f"[ERROR] Failed to fetch YouTube info: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch video info: {str(e)}")
 
 @app.post("/api/script/initialize")
@@ -4473,7 +4689,7 @@ async def initialize_script_session():
     """Initialize a new script building session"""
     try:
         session = session_manager.create_session()
-        print(f"[DEBUG] Created new script session: {session.session_id}")
+        safe_print(f"[DEBUG] Created new script session: {session.session_id}")
         
         return {
             "status": "success",
@@ -4486,7 +4702,7 @@ async def initialize_script_session():
             }
         }
     except Exception as e:
-        print(f"[ERROR] Failed to initialize script session: {e}")
+        safe_print(f"[ERROR] Failed to initialize script session: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to initialize session: {str(e)}")
 
 @app.post("/api/script/set-entry-method")
@@ -4509,7 +4725,7 @@ async def set_entry_method(
         
         session_manager.update_session(session)
         
-        print(f"[DEBUG] Set entry method to YouTube for session {session_id}")
+        safe_print(f"[DEBUG] Set entry method to YouTube for session {session_id}")
         
         return {
             "status": "success",
@@ -4520,7 +4736,7 @@ async def set_entry_method(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Failed to set entry method: {e}")
+        safe_print(f"[ERROR] Failed to set entry method: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to set entry method: {str(e)}")
 
 def extract_video_id_from_url(youtube_url: str) -> str:
@@ -4557,7 +4773,7 @@ def extract_youtube_captions(video_id: str) -> tuple[str, str]:
     method_used can be: 'auto_generated', 'manual', or 'translated'
     """
     try:
-        print(f"[DEBUG] Attempting to extract captions for video ID: {video_id}")
+        safe_print(f"[DEBUG] Attempting to extract captions for video ID: {video_id}")
         
         # Get available transcripts
         transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
@@ -4580,7 +4796,7 @@ def extract_youtube_captions(video_id: str) -> tuple[str, str]:
                         method_used = "manual"
                     break
             
-            print(f"[DEBUG] Found English transcript: {method_used}")
+            safe_print(f"[DEBUG] Found English transcript: {method_used}")
             
         except Exception:
             # If no English, try any available language
@@ -4590,7 +4806,7 @@ def extract_youtube_captions(video_id: str) -> tuple[str, str]:
                 if available_transcripts:
                     transcript = available_transcripts[0].fetch()
                     method_used = "translated"
-                    print(f"[DEBUG] Found transcript in language: {available_transcripts[0].language}")
+                    safe_print(f"[DEBUG] Found transcript in language: {available_transcripts[0].language}")
                 else:
                     raise Exception("No transcripts available")
                     
@@ -4609,13 +4825,13 @@ def extract_youtube_captions(video_id: str) -> tuple[str, str]:
         transcript_text = transcript_text.strip()
         transcript_text = transcript_text.replace('\n', ' ').replace('  ', ' ')
         
-        print(f"[DEBUG] Successfully extracted captions using {method_used} method")
-        print(f"[DEBUG] Caption length: {len(transcript_text)} characters")
+        safe_print(f"[DEBUG] Successfully extracted captions using {method_used} method")
+        safe_print(f"[DEBUG] Caption length: {len(transcript_text)} characters")
         
         return transcript_text, method_used
         
     except Exception as e:
-        print(f"[DEBUG] Caption extraction failed: {str(e)}")
+        safe_print(f"[DEBUG] Caption extraction failed: {str(e)}")
         raise Exception(f"Caption extraction failed: {str(e)}")
 
 @app.post("/api/script/youtube/extract")
@@ -4627,7 +4843,7 @@ async def extract_youtube_transcript(
 ):
     """Extract transcript from YouTube video for interactive script building"""
     try:
-        print(f"[DEBUG] Starting transcript extraction for session {session_id}")
+        safe_print(f"[DEBUG] Starting transcript extraction for session {session_id}")
         session = session_manager.get_session(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -4635,12 +4851,12 @@ async def extract_youtube_transcript(
         if session.entry_method != EntryMethod.YOUTUBE:
             raise HTTPException(status_code=400, detail="Session not configured for YouTube entry method")
         
-        print(f"[DEBUG] Session validated, extracting YouTube transcript for session {session_id}")
-        print(f"[DEBUG] YouTube URL: {youtube_url}")
+        safe_print(f"[DEBUG] Session validated, extracting YouTube transcript for session {session_id}")
+        safe_print(f"[DEBUG] YouTube URL: {youtube_url}")
         
         # Extract video ID from URL
         video_id = extract_video_id_from_url(youtube_url)
-        print(f"[DEBUG] Extracted video ID: {video_id}")
+        safe_print(f"[DEBUG] Extracted video ID: {video_id}")
         
         # STEP 1: Try to extract captions first (fast method)
         transcript = None
@@ -4648,11 +4864,11 @@ async def extract_youtube_transcript(
         video_title = "Unknown Video"
         
         try:
-            print(f"[DEBUG] Attempting fast caption extraction...")
+            safe_print(f"[DEBUG] Attempting fast caption extraction...")
             transcript, caption_method = extract_youtube_captions(video_id)
             extraction_method = f"captions_{caption_method}"
-            print(f"[DEBUG] Caption extraction successful! Method: {caption_method}")
-            print(f"[DEBUG] Caption length: {len(transcript)} characters")
+            safe_print(f"[DEBUG] Caption extraction successful! Method: {caption_method}")
+            safe_print(f"[DEBUG] Caption length: {len(transcript)} characters")
             
             # Get video title using yt-dlp (quick info extraction, no download)
             try:
@@ -4661,14 +4877,14 @@ async def extract_youtube_transcript(
                     info = ydl.extract_info(youtube_url, download=False)
                     raw_title = info.get('title', 'Unknown Video')
                     video_title = safe_str(raw_title)
-                    print(f"[DEBUG] Video title extracted and cleaned: {video_title[:50]}...")
+                    safe_print(f"[DEBUG] Video title extracted and cleaned: {video_title[:50]}...")
             except Exception as e:
-                print(f"[DEBUG] Could not extract video title: {e}")
+                safe_print(f"[DEBUG] Could not extract video title: {e}")
                 video_title = "Unknown Video"
                 
         except Exception as caption_error:
-            print(f"[DEBUG] Caption extraction failed: {caption_error}")
-            print(f"[DEBUG] Falling back to audio download + Whisper transcription...")
+            safe_print(f"[DEBUG] Caption extraction failed: {caption_error}")
+            safe_print(f"[DEBUG] Falling back to audio download + Whisper transcription...")
             
             # STEP 2: Fallback to audio download + Whisper (slow method)
             extraction_method = "whisper_transcription"
@@ -4687,19 +4903,19 @@ async def extract_youtube_transcript(
                 actual_audio_path = None
                 
                 # Download audio only
-                print(f"[DEBUG] Starting audio-only download...")
+                safe_print(f"[DEBUG] Starting audio-only download...")
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    print(f"[DEBUG] Extracting video info...")
+                    safe_print(f"[DEBUG] Extracting video info...")
                     info = ydl.extract_info(youtube_url, download=False)
-                    print(f"[DEBUG] Video info extracted successfully")
+                    safe_print(f"[DEBUG] Video info extracted successfully")
                     
                     raw_title = info.get('title', 'Unknown Video')
                     video_title = safe_str(raw_title)
-                    print(f"[DEBUG] Video title cleaned: {video_title[:50] if video_title else 'No title'}...")
+                    safe_print(f"[DEBUG] Video title cleaned: {video_title[:50] if video_title else 'No title'}...")
                     
-                    print(f"[DEBUG] Starting audio download...")
+                    safe_print(f"[DEBUG] Starting audio download...")
                     ydl.download([youtube_url])
-                    print(f"[DEBUG] Audio download completed")
+                    safe_print(f"[DEBUG] Audio download completed")
                     
                     # Find the downloaded audio file
                     for file in os.listdir(temp_dir):
@@ -4711,17 +4927,17 @@ async def extract_youtube_transcript(
                         raise Exception("Downloaded audio file not found")
                 
                 # Transcribe with Whisper
-                print(f"[DEBUG] Starting Whisper transcription...")
+                safe_print(f"[DEBUG] Starting Whisper transcription...")
                 result = whisper_model.transcribe(actual_audio_path)
                 transcript = result["text"]
-                print(f"[DEBUG] Whisper transcription completed")
+                safe_print(f"[DEBUG] Whisper transcription completed")
                 
-                print(f"[DEBUG] Transcript length: {len(transcript)} characters")
+                safe_print(f"[DEBUG] Transcript length: {len(transcript)} characters")
         
         # Update session with transcript data (using safe encoding)
-        print(f"[DEBUG] Updating session with transcript data...")
+        safe_print(f"[DEBUG] Updating session with transcript data...")
         # video_title is already cleaned by safe_str earlier
-        print(f"[DEBUG] Title ready: {len(video_title)} chars")
+        safe_print(f"[DEBUG] Title ready: {len(video_title)} chars")
         
         session.youtube_url = youtube_url
         session.video_title = video_title
@@ -4730,14 +4946,14 @@ async def extract_youtube_transcript(
         session.custom_prompt = custom_prompt
         session.current_phase = SessionPhase.BUILDING
         
-        print(f"[DEBUG] Calling session_manager.update_session...")
+        safe_print(f"[DEBUG] Calling session_manager.update_session...")
         session_manager.update_session(session)
-        print(f"[DEBUG] Session updated successfully")
+        safe_print(f"[DEBUG] Session updated successfully")
         
         # Add system message to chat history (with safe encoding)
-        print(f"[DEBUG] Adding chat message...")
+        safe_print(f"[DEBUG] Adding chat message...")
         chat_message = f"Successfully extracted transcript from YouTube video: {video_title}"
-        print(f"[DEBUG] Chat message created, length: {len(chat_message)}")
+        safe_print(f"[DEBUG] Chat message created, length: {len(chat_message)}")
         
         session_manager.add_chat_message(
             session_id,
@@ -4745,9 +4961,9 @@ async def extract_youtube_transcript(
             chat_message,
             {"transcript_length": len(transcript), "video_title": video_title}
         )
-        print(f"[DEBUG] Chat message added successfully")
+        safe_print(f"[DEBUG] Chat message added successfully")
         
-        print(f"[DEBUG] Creating return response...")
+        safe_print(f"[DEBUG] Creating return response...")
         response = {
             "status": "success",
             "video_title": video_title,
@@ -4756,12 +4972,12 @@ async def extract_youtube_transcript(
             "extraction_method": extraction_method,
             "current_phase": session.current_phase.value
         }
-        print(f"[DEBUG] Response created successfully")
+        safe_print(f"[DEBUG] Response created successfully")
         return response
         
     except Exception as e:
         error_msg = safe_str(e)
-        print(f"[ERROR] YouTube transcript extraction failed: {error_msg}")
+        safe_print(f"[ERROR] YouTube transcript extraction failed: {error_msg}")
         raise HTTPException(status_code=500, detail=f"Transcript extraction failed: {error_msg}")
 
 # Upload script endpoint removed - YouTube only workflow
@@ -4803,7 +5019,7 @@ def chunk_transcript_for_processing(content: str, chunk_size: int = 2000) -> Lis
         
         start_idx = end_idx - overlap_size
     
-    print(f"[DEBUG] Split {total_words} words into {len(chunks)} chunks")
+    safe_print(f"[DEBUG] Split {total_words} words into {len(chunks)} chunks")
     return chunks
 
 async def process_transcript_chunks(chunks: List[str], base_prompt: str, client, video_title: str = "") -> str:
@@ -4822,7 +5038,7 @@ async def process_transcript_chunks(chunks: List[str], base_prompt: str, client,
     processed_chunks = []
     
     for i, chunk in enumerate(chunks):
-        print(f"[DEBUG] Processing chunk {i+1}/{len(chunks)} ({len(chunk)} characters)")
+        safe_print(f"[DEBUG] Processing chunk {i+1}/{len(chunks)} ({len(chunk)} characters)")
         
         # Build context-aware prompt for this chunk
         if i == 0:
@@ -4890,12 +5106,12 @@ async def process_transcript_chunks(chunks: List[str], base_prompt: str, client,
             chunk_result = response.choices[0].message.content
             if chunk_result and chunk_result.strip():
                 processed_chunks.append(chunk_result.strip())
-                print(f"[DEBUG] Chunk {i+1} processed: {len(chunk_result)} characters")
+                safe_print(f"[DEBUG] Chunk {i+1} processed: {len(chunk_result)} characters")
             else:
-                print(f"[WARNING] Chunk {i+1} returned empty result")
+                safe_print(f"[WARNING] Chunk {i+1} returned empty result")
                 
         except Exception as chunk_error:
-            print(f"[ERROR] Failed to process chunk {i+1}: {chunk_error}")
+            safe_print(f"[ERROR] Failed to process chunk {i+1}: {chunk_error}")
             # Try with GPT-3.5 as fallback
             try:
                 response = client.chat.completions.create(
@@ -4907,11 +5123,11 @@ async def process_transcript_chunks(chunks: List[str], base_prompt: str, client,
                 chunk_result = response.choices[0].message.content
                 if chunk_result and chunk_result.strip():
                     processed_chunks.append(chunk_result.strip())
-                    print(f"[DEBUG] Chunk {i+1} processed with GPT-3.5: {len(chunk_result)} characters")
+                    safe_print(f"[DEBUG] Chunk {i+1} processed with GPT-3.5: {len(chunk_result)} characters")
                 else:
-                    print(f"[WARNING] Chunk {i+1} failed completely")
+                    safe_print(f"[WARNING] Chunk {i+1} failed completely")
             except Exception as fallback_error:
-                print(f"[ERROR] Chunk {i+1} failed with both models: {fallback_error}")
+                safe_print(f"[ERROR] Chunk {i+1} failed with both models: {fallback_error}")
     
     # Combine all processed chunks
     if not processed_chunks:
@@ -4926,7 +5142,7 @@ async def process_transcript_chunks(chunks: List[str], base_prompt: str, client,
             # Add a subtle transition between chunks if needed
             full_script += " " + chunk
     
-    print(f"[DEBUG] Combined script length: {len(full_script)} characters from {len(processed_chunks)} chunks")
+    safe_print(f"[DEBUG] Combined script length: {len(full_script)} characters from {len(processed_chunks)} chunks")
     return full_script
 
 @app.post("/api/script/generate-full-script")
@@ -4937,7 +5153,7 @@ async def generate_full_script(session_id: str = Form(...)):
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        print(f"[DEBUG] Generating full script for session {session_id}")
+        safe_print(f"[DEBUG] Generating full script for session {session_id}")
         
         # Validate YouTube entry method and transcript
         if session.entry_method != EntryMethod.YOUTUBE:
@@ -4947,17 +5163,17 @@ async def generate_full_script(session_id: str = Form(...)):
             raise HTTPException(status_code=400, detail="No transcript available")
         
         content = session.transcript
-        print(f"[DEBUG] Original transcript length: {len(content)} characters ({len(content.split())} words)")
-        print(f"[DEBUG] Transcript preview: {content[:200]}...")
+        safe_print(f"[DEBUG] Original transcript length: {len(content)} characters ({len(content.split())} words)")
+        safe_print(f"[DEBUG] Transcript preview: {content[:200]}...")
         
         # Load the prompt from file
         base_prompt = None
         if session.use_default_prompt:
             try:
                 base_prompt = load_prompt_from_file("Advanced YouTube Content Script Generation")
-                print(f"[DEBUG] Loaded Advanced YouTube Content Script Generation prompt ({len(base_prompt)} chars)")
+                safe_print(f"[DEBUG] Loaded Advanced YouTube Content Script Generation prompt ({len(base_prompt)} chars)")
             except Exception as prompt_error:
-                print(f"[DEBUG] Failed to load prompt from file: {prompt_error}")
+                safe_print(f"[DEBUG] Failed to load prompt from file: {prompt_error}")
         
         if not base_prompt:
             if session.custom_prompt:
@@ -5008,7 +5224,7 @@ async def generate_full_script(session_id: str = Form(...)):
         word_count = len(content.split())
         
         if word_count > 1500:  # Use chunked processing for longer transcripts
-            print(f"[DEBUG] Using chunked processing for {word_count} words")
+            safe_print(f"[DEBUG] Using chunked processing for {word_count} words")
             
             # Split transcript into chunks
             chunks = chunk_transcript_for_processing(content, chunk_size=1500)
@@ -5023,7 +5239,7 @@ async def generate_full_script(session_id: str = Form(...)):
             
         else:
             # Use single-pass processing for shorter transcripts
-            print(f"[DEBUG] Using single-pass processing for {word_count} words")
+            safe_print(f"[DEBUG] Using single-pass processing for {word_count} words")
             
             script_prompt = f"""
             {base_prompt}
@@ -5045,9 +5261,9 @@ async def generate_full_script(session_id: str = Form(...)):
                     max_tokens=16000
                 )
                 full_script = response.choices[0].message.content
-                print(f"[DEBUG] Single-pass GPT-4 generation successful")
+                safe_print(f"[DEBUG] Single-pass GPT-4 generation successful")
             except Exception as gpt4_error:
-                print(f"[DEBUG] GPT-4 failed ({gpt4_error}), falling back to GPT-3.5-turbo...")
+                safe_print(f"[DEBUG] GPT-4 failed ({gpt4_error}), falling back to GPT-3.5-turbo...")
                 response = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[{"role": "user", "content": script_prompt}],
@@ -5056,8 +5272,8 @@ async def generate_full_script(session_id: str = Form(...)):
                 )
                 full_script = response.choices[0].message.content
         
-        print(f"[DEBUG] Generated script length: {len(full_script) if full_script else 0} characters")
-        print(f"[DEBUG] Generated script preview: {full_script[:200] if full_script else 'None'}...")
+        safe_print(f"[DEBUG] Generated script length: {len(full_script) if full_script else 0} characters")
+        safe_print(f"[DEBUG] Generated script preview: {full_script[:200] if full_script else 'None'}...")
         
         if not full_script or full_script.strip() == "":
             raise Exception("Script generation returned empty result")
@@ -5067,7 +5283,7 @@ async def generate_full_script(session_id: str = Form(...)):
         script_length = len(full_script)
         preservation_ratio = (script_length / original_length) * 100 if original_length > 0 else 0
         
-        print(f"[DEBUG] Length preservation: {preservation_ratio:.1f}% ({script_length}/{original_length} chars)")
+        safe_print(f"[DEBUG] Length preservation: {preservation_ratio:.1f}% ({script_length}/{original_length} chars)")
         
         # Update session with full script
         session.final_script = full_script
@@ -5100,8 +5316,8 @@ async def generate_full_script(session_id: str = Form(...)):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Full script generation failed: {e}")
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        safe_print(f"[ERROR] Full script generation failed: {e}")
+        safe_print(f"[ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Script generation failed: {str(e)}")
 
 @app.post("/api/script/modify-text")
@@ -5121,7 +5337,7 @@ async def modify_selected_text(
         if not session.final_script:
             raise HTTPException(status_code=400, detail="No script available to modify")
         
-        print(f"[DEBUG] Modifying text for session {session_id}, type: {modification_type}")
+        safe_print(f"[DEBUG] Modifying text for session {session_id}, type: {modification_type}")
         
         # Generate modification using OpenAI
         api_key = os.getenv("OPENAI_API_KEY_1") or os.getenv("OPENAI_API_KEY")
@@ -5213,7 +5429,7 @@ async def modify_selected_text(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Text modification failed: {e}")
+        safe_print(f"[ERROR] Text modification failed: {e}")
         raise HTTPException(status_code=500, detail=f"Text modification failed: {str(e)}")
 
 @app.post("/api/script/apply-modification")
@@ -5257,7 +5473,7 @@ async def apply_text_modification(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Apply modification failed: {e}")
+        safe_print(f"[ERROR] Apply modification failed: {e}")
         raise HTTPException(status_code=500, detail=f"Apply modification failed: {str(e)}")
 
 @app.post("/api/script/modify-bulk-text")
@@ -5275,7 +5491,7 @@ async def modify_bulk_selected_text(
         if not session.final_script:
             raise HTTPException(status_code=400, detail="No script available to modify")
         
-        print(f"[DEBUG] Bulk modifying text for session {session_id}, type: {modification_type}")
+        safe_print(f"[DEBUG] Bulk modifying text for session {session_id}, type: {modification_type}")
         
         # Parse selections JSON
         import json
@@ -5393,7 +5609,7 @@ async def modify_bulk_selected_text(
                 })
                 
             except Exception as e:
-                print(f"[ERROR] Failed to modify selection {i}: {e}")
+                safe_print(f"[ERROR] Failed to modify selection {i}: {e}")
                 modification_results.append({
                     "index": i,
                     "original_text": selected_text,
@@ -5415,7 +5631,7 @@ async def modify_bulk_selected_text(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Bulk text modification failed: {e}")
+        safe_print(f"[ERROR] Bulk text modification failed: {e}")
         raise HTTPException(status_code=500, detail=f"Bulk text modification failed: {str(e)}")
 
 @app.post("/api/script/apply-bulk-modification")
@@ -5432,7 +5648,7 @@ async def apply_bulk_text_modification(
         if not session.final_script:
             raise HTTPException(status_code=400, detail="No script available to modify")
         
-        print(f"[DEBUG] Applying bulk modifications for session {session_id}")
+        safe_print(f"[DEBUG] Applying bulk modifications for session {session_id}")
         
         # Parse modifications JSON
         import json
@@ -5467,7 +5683,7 @@ async def apply_bulk_text_modification(
                     updated_script = updated_script.replace(original_text, modified_text, 1)
                     applied_count += 1
                 else:
-                    print(f"[WARNING] Original text not found in script: {original_text[:50]}...")
+                    safe_print(f"[WARNING] Original text not found in script: {original_text[:50]}...")
             
             # Update session with the new script
             session.final_script = updated_script
@@ -5504,7 +5720,7 @@ async def apply_bulk_text_modification(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Apply bulk modification failed: {e}")
+        safe_print(f"[ERROR] Apply bulk modification failed: {e}")
         raise HTTPException(status_code=500, detail=f"Apply bulk modification failed: {str(e)}")
 
 # =============================================================================
@@ -5528,7 +5744,7 @@ async def script_chat(
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        print(f"[DEBUG] Processing chat message for session {session_id}: {message[:100]}...")
+        safe_print(f"[DEBUG] Processing chat message for session {session_id}: {message[:100]}...")
         
         # Add user message to chat history
         user_message = session_manager.add_chat_message(session_id, message_type, message)
@@ -5554,16 +5770,16 @@ async def script_chat(
                 
             elif command == '/help':
                 # Show help
-                response_content = """💡 Script Building Help:
+                response_content = """[?] Script Building Help:
 
 Available Commands:
-• /wordcount - Show current script statistics
-• /help - Show this help
+- /wordcount - Show current script statistics
+- /help - Show this help
 
 Script Editing:
-• Generate a full script first, then use highlight-to-edit features
-• Select any text in the script to modify it
-• Use bulk editing for multiple selections
+- Generate a full script first, then use highlight-to-edit features
+- Select any text in the script to modify it
+- Use bulk editing for multiple selections
 
 Just ask me questions about your script naturally - I'm here to help!"""
                 
@@ -5617,7 +5833,7 @@ Just ask me questions about your script naturally - I'm here to help!"""
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Chat processing failed: {e}")
+        safe_print(f"[ERROR] Chat processing failed: {e}")
         raise HTTPException(status_code=500, detail=f"Chat processing failed: {str(e)}")
 
 # Legacy section-based helper functions removed - using full script approach
@@ -5656,7 +5872,7 @@ async def handle_general_chat(session: ScriptSession, message: str):
         return response.choices[0].message.content, {}
         
     except Exception as e:
-        print(f"[ERROR] General chat failed: {e}")
+        safe_print(f"[ERROR] General chat failed: {e}")
         return "I'm here to help with your script building. Generate a full script first, then use the highlight-to-edit features to modify it!", {}
 
 @app.get("/api/script/session/{session_id}")
@@ -5696,7 +5912,7 @@ async def get_script_session(session_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Failed to get session: {e}")
+        safe_print(f"[ERROR] Failed to get session: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get session: {str(e)}")
 
 @app.post("/api/script/finalize")
@@ -5739,7 +5955,7 @@ async def finalize_script(session_id: str = Form(...)):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Script finalization failed: {e}")
+        safe_print(f"[ERROR] Script finalization failed: {e}")
         raise HTTPException(status_code=500, detail=f"Script finalization failed: {str(e)}")
 
 # Session cleanup endpoint
@@ -5750,7 +5966,7 @@ async def cleanup_old_sessions():
         session_manager.cleanup_old_sessions(max_age_hours=24)
         return {"status": "success", "message": "Old sessions cleaned up"}
     except Exception as e:
-        print(f"[ERROR] Session cleanup failed: {e}")
+        safe_print(f"[ERROR] Session cleanup failed: {e}")
         raise HTTPException(status_code=500, detail=f"Session cleanup failed: {str(e)}")
 
 # ============================================================================
@@ -5822,7 +6038,7 @@ async def save_script(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Failed to save script: {e}")
+        safe_print(f"[ERROR] Failed to save script: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to save script: {str(e)}")
 
 @app.get("/api/scripts/list")
@@ -5837,7 +6053,7 @@ async def list_scripts():
         }
         
     except Exception as e:
-        print(f"[ERROR] Failed to list scripts: {e}")
+        safe_print(f"[ERROR] Failed to list scripts: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list scripts: {str(e)}")
 
 @app.get("/api/scripts/{script_id}")
@@ -5856,7 +6072,7 @@ async def get_script(script_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Failed to get script: {e}")
+        safe_print(f"[ERROR] Failed to get script: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get script: {str(e)}")
 
 @app.delete("/api/scripts/{script_id}")
@@ -5875,7 +6091,7 @@ async def delete_script(script_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Failed to delete script: {e}")
+        safe_print(f"[ERROR] Failed to delete script: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete script: {str(e)}")
 
 @app.post("/api/scripts/load")
@@ -5906,7 +6122,7 @@ async def load_script_for_processing(script_id: str = Form(...)):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Failed to load script for processing: {e}")
+        safe_print(f"[ERROR] Failed to load script for processing: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to load script: {str(e)}")
 
 # ============================================================================
@@ -5915,7 +6131,7 @@ async def load_script_for_processing(script_id: str = Form(...)):
 async def get_youtube_info(youtube_url: str = Form(...)):
     """Get YouTube video information for preview"""
     try:
-        print(f"[DEBUG] Fetching YouTube info for: {youtube_url}")
+        safe_print(f"[DEBUG] Fetching YouTube info for: {youtube_url}")
         
         # Use yt-dlp to extract video info without downloading
         ydl_opts = {
@@ -5941,7 +6157,7 @@ async def get_youtube_info(youtube_url: str = Form(...)):
             else:
                 views = f"{view_count} views"
             
-            print(f"[DEBUG] Video info extracted: {title}")
+            safe_print(f"[DEBUG] Video info extracted: {title}")
             
             return {
                 "status": "success",
@@ -5954,7 +6170,7 @@ async def get_youtube_info(youtube_url: str = Form(...)):
             }
             
     except Exception as e:
-        print(f"[ERROR] Failed to fetch YouTube info: {e}")
+        safe_print(f"[ERROR] Failed to fetch YouTube info: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch video info: {str(e)}")
 
 @app.post("/api/script/initialize")
@@ -5962,7 +6178,7 @@ async def initialize_script_session():
     """Initialize a new script building session"""
     try:
         session = session_manager.create_session()
-        print(f"[DEBUG] Created new script session: {session.session_id}")
+        safe_print(f"[DEBUG] Created new script session: {session.session_id}")
         
         return {
             "status": "success",
@@ -5978,7 +6194,7 @@ async def initialize_script_session():
             }
         }
     except Exception as e:
-        print(f"[ERROR] Failed to initialize script session: {e}")
+        safe_print(f"[ERROR] Failed to initialize script session: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to initialize session: {str(e)}")
 
 # Load environment variables
@@ -5988,19 +6204,20 @@ load_dotenv()
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
+        self.registered_process_ids: set = set()  # Track all registered process IDs
 
     async def connect(self, websocket: WebSocket, process_id: str):
         await websocket.accept()
         self.active_connections[process_id] = websocket
-        print(f"[WS] Client connected for process {process_id}")
+        safe_print(f"[WS] Client connected for process {process_id}")
 
     def disconnect(self, process_id: str):
         if process_id in self.active_connections:
             del self.active_connections[process_id]
-            print(f"[WS] Client disconnected for process {process_id}")
+            safe_print(f"[WS] Client disconnected for process {process_id}")
 
     async def send_progress(self, process_id: str, step: str, message: str, progress: float):
-        if process_id in self.active_connections:
+        if process_id in self.active_connections and self.active_connections[process_id] is not None:
             try:
                 await self.active_connections[process_id].send_text(json.dumps({
                     "step": step,
@@ -6008,12 +6225,15 @@ class ConnectionManager:
                     "progress": progress,
                     "timestamp": datetime.datetime.now().isoformat()
                 }))
+                safe_print(f"[WS] SUCCESS: Sent progress to {process_id}: {step} ({progress}%)")
             except Exception as e:
-                print(f"[WS] Error sending progress for {process_id}: {e}")
+                safe_print(f"[WS] ERROR: Error sending progress for {process_id}: {e}")
                 self.disconnect(process_id)
+        else:
+            safe_print(f"[WS] WARNING: No active connection for process {process_id}, skipping progress update")
 
     async def send_completion(self, process_id: str, success: bool, result_data: dict = None):
-        if process_id in self.active_connections:
+        if process_id in self.active_connections and self.active_connections[process_id] is not None:
             try:
                 await self.active_connections[process_id].send_text(json.dumps({
                     "step": "completed" if success else "error",
@@ -6023,10 +6243,13 @@ class ConnectionManager:
                     "result": result_data,
                     "timestamp": datetime.datetime.now().isoformat()
                 }))
+                safe_print(f"[WS] SUCCESS: Sent completion to {process_id}: {'success' if success else 'failure'}")
             except Exception as e:
-                print(f"[WS] Error sending completion for {process_id}: {e}")
+                safe_print(f"[WS] ERROR: Error sending completion for {process_id}: {e}")
             finally:
                 self.disconnect(process_id)
+        else:
+            safe_print(f"[WS] WARNING: No active connection for process {process_id}, skipping completion update")
 
 # Initialize WebSocket manager
 manager = ConnectionManager()
@@ -6049,7 +6272,12 @@ async def start_process():
     Returns the process_id that will be used for the actual processing
     """
     process_id = str(uuid.uuid4())[:8]
-    logger.info(f"[PROCESS-START] Generated process ID: {process_id}")
+    
+    # Pre-register the process ID in connection manager with better tracking
+    manager.active_connections[process_id] = None  # Reserve the slot
+    
+    logger.info(f"[PROCESS-START] Generated and pre-registered process ID: {process_id}")
+    safe_print(f"[PROCESS-START] Current active connections: {list(manager.active_connections.keys())}")
     
     return {
         "process_id": process_id,
@@ -6060,19 +6288,65 @@ async def start_process():
 # WebSocket endpoint for real-time progress updates
 @app.websocket("/ws/{process_id}")
 async def websocket_endpoint(websocket: WebSocket, process_id: str):
-    print(f"[WS] New WebSocket connection request for process {process_id}")
-    await manager.connect(websocket, process_id)
+    safe_print(f"[WS] ========= NEW WEBSOCKET CONNECTION REQUEST =========")
+    safe_print(f"[WS] Process ID: {process_id}")
+    safe_print(f"[WS] WebSocket client: {websocket.client}")
+    safe_print(f"[WS] Current active connections: {list(manager.active_connections.keys())}")
+    
     try:
+        # Always accept the connection first, then check process ID
+        await websocket.accept()
+        safe_print(f"[WS] SUCCESS: WebSocket connection accepted for process {process_id}")
+        
+        # Check if process ID was pre-registered
+        if process_id not in manager.active_connections:
+            safe_print(f"[WS] ERROR: Process {process_id} not found in active connections")
+            safe_print(f"[WS] Available process IDs: {list(manager.active_connections.keys())}")
+            safe_print(f"[WS] Manager instance ID: {id(manager)}")
+            safe_print(f"[WS] Total active connections: {len(manager.active_connections)}")
+            
+            # Try to recover by re-registering the process ID
+            safe_print(f"[WS] Attempting to recover by re-registering process {process_id}")
+            manager.active_connections[process_id] = None
+            safe_print(f"[WS] Recovery attempt complete, proceeding with connection")
+        else:
+            safe_print(f"[WS] SUCCESS: Process {process_id} found in registry, establishing connection")
+        
+        # Update the connection in manager
+        manager.active_connections[process_id] = websocket
+        safe_print(f"[WS] SUCCESS: Connection established successfully for process {process_id}")
+        
+        # Send initial connection confirmation
+        await websocket.send_text(json.dumps({
+            "step": "connected",
+            "message": "WebSocket connection established",
+            "progress": 0,
+            "timestamp": datetime.datetime.now().isoformat()
+        }))
+        
+        # Keep connection alive and listen for client messages
         while True:
-            # Keep connection alive and listen for client disconnection
-            message = await websocket.receive_text()
-            print(f"[WS] Received message from client: {message}")
-    except WebSocketDisconnect:
-        print(f"[WS] Client disconnected for process {process_id}")
-        manager.disconnect(process_id)
+            try:
+                message = await websocket.receive_text()
+                safe_print(f"[WS] MESSAGE: Received message from client {process_id}: {message}")
+            except WebSocketDisconnect:
+                safe_print(f"[WS] DISCONNECT: Client disconnected for process {process_id}")
+                break
+            except Exception as e:
+                safe_print(f"[WS] ERROR: Error receiving message for process {process_id}: {e}")
+                break
+                
     except Exception as e:
-        print(f"[WS] WebSocket error for process {process_id}: {e}")
-        manager.disconnect(process_id)
+        safe_print(f"[WS] ERROR: WebSocket connection error for process {process_id}: {e}")
+        safe_print(f"[WS] Error type: {type(e)}")
+        import traceback
+        safe_print(f"[WS] Traceback: {traceback.format_exc()}")
+    finally:
+        # Clean up connection
+        if process_id in manager.active_connections:
+            del manager.active_connections[process_id]
+            safe_print(f"[WS] CLEANUP: Cleaned up connection for process {process_id}")
+        safe_print(f"[WS] ========= WEBSOCKET CONNECTION ENDED =========")
 
 if __name__ == "__main__":
     import uvicorn

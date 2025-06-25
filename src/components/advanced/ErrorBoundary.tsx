@@ -155,10 +155,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               <div className="pt-4 border-t border-border">
                 <h5 className="text-sm font-medium text-foreground mb-2">Quick fixes to try:</h5>
                 <ul className="text-xs text-muted-foreground space-y-1">
-                  <li>• Refresh the page</li>
-                  <li>• Check your internet connection</li>
-                  <li>• Clear your browser cache</li>
-                  <li>• Disable browser extensions</li>
+                  <li>- Refresh the page</li>
+                  <li>- Check your internet connection</li>
+                  <li>- Clear your browser cache</li>
+                  <li>- Disable browser extensions</li>
                 </ul>
               </div>
             </CardContent>

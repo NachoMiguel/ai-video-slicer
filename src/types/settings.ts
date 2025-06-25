@@ -31,6 +31,7 @@ export interface UserPreferences {
   defaultPromptStyle: 'casual' | 'professional' | 'educational' | 'marketing';
   scriptLengthPreference: 'short' | 'medium' | 'long' | 'custom';
   customScriptLength?: number; // in words
+  skipCharacterExtraction: boolean;
   
   // UI Settings
   theme: 'light' | 'dark' | 'system';
@@ -95,6 +96,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   defaultPromptStyle: 'professional',
   scriptLengthPreference: 'medium',
   customScriptLength: 500,
+  skipCharacterExtraction: false,
   
   // UI Settings
   theme: 'system',

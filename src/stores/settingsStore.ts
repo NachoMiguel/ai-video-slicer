@@ -108,6 +108,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           defaultPromptStyle: DEFAULT_PREFERENCES.defaultPromptStyle,
           scriptLengthPreference: DEFAULT_PREFERENCES.scriptLengthPreference,
           customScriptLength: DEFAULT_PREFERENCES.customScriptLength,
+          skipCharacterExtraction: DEFAULT_PREFERENCES.skipCharacterExtraction,
         };
         break;
       case 'ui':

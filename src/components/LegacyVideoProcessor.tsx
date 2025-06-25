@@ -6,12 +6,14 @@ import { ProcessingStatus } from './ProcessingStatus'
 import { VideoPreview } from './VideoPreview'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
+import { useSettingsStore } from '../stores/settingsStore'
 
 interface LegacyVideoProcessorProps {
   className?: string;
 }
 
 export function LegacyVideoProcessor({ className = '' }: LegacyVideoProcessorProps) {
+  const { preferences } = useSettingsStore()
   const [videos, setVideos] = useState<File[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [processId, setProcessId] = useState<string | null>(null)
@@ -46,7 +48,7 @@ export function LegacyVideoProcessor({ className = '' }: LegacyVideoProcessorPro
       formData.append('prompt', prompt)
       formData.append('use_base_prompt', String(prompt === 'Use base prompt'))
       formData.append('use_advanced_assembly', String(useAdvancedAssembly))
-      formData.append('skip_character_extraction', 'true')
+      formData.append('skip_character_extraction', String(preferences.skipCharacterExtraction))
 
       const response = await fetch('http://127.0.0.1:8000/api/process', {
         method: 'POST',
@@ -235,7 +237,7 @@ export function LegacyVideoProcessor({ className = '' }: LegacyVideoProcessorPro
                         ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
                         : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
                     }`}>
-                      {result.assemblyType === 'advanced' ? '🤖 Advanced Assembly' : '🔧 Simple Assembly'}
+                      {result.assemblyType === 'advanced' ? '[AI] Advanced Assembly' : '[TOOL] Simple Assembly'}
                     </span>
                   </div>
                 )}

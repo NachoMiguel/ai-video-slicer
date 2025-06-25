@@ -1,52 +1,68 @@
 {
-  "last_account_index": 0,
+  "last_account_index": 1,
   "accounts": [
     {
       "id": 1,
       "email": "solohypechannel@gmail.com",
       "signup_date": "2024-03-20",
       "credits_used": 9231,
-      "credits_remaining": 769,
+      "credits_remaining": 67,
       "last_used": "2025-06-22T19:24:33.897075"
     },
     {
       "id": 2,
       "email": "ignacio.miguel.a@gmail.com",
       "signup_date": "2024-03-20",
-      "credits_used": 11710,
-      "credits_remaining": 0,
-      "last_used": "2025-06-22T19:24:33.894112"
+      "credits_used": 11680,
+      "credits_remaining": 21131,
+      "last_used": "2025-06-24T19:04:55.306712",
+      "plan_type": "starter",
+      "monthly_limit": 30000,
+      "is_paid": true,
+      "upgraded_date": "2025-06-23T19:00:00.000000"
     },
     {
       "id": 3,
       "email": "ignaciostiktok@gmail.com",
       "signup_date": "2024-03-20",
-      "credits_used": 11529,
-      "credits_remaining": 0,
-      "last_used": "2025-06-22T19:24:33.894611"
+      "credits_used": 0,
+      "credits_remaining": 30000,
+      "last_used": "2025-06-22T19:24:33.894611",
+      "plan_type": "starter",
+      "monthly_limit": 30000,
+      "is_paid": true,
+      "upgraded_date": "2025-06-23T19:00:00.000000"
     },
     {
       "id": 4,
       "email": "nmtiktokshop@gmail.com",
       "signup_date": "2024-03-20",
-      "credits_used": 4937,
-      "credits_remaining": 5063,
-      "last_used": "2025-06-22T19:24:33.896577"
+      "credits_used": 0,
+      "credits_remaining": 30937,
+      "last_used": "2025-06-22T19:24:33.896577",
+      "plan_type": "starter",
+      "monthly_limit": 30000,
+      "is_paid": true,
+      "upgraded_date": "2025-06-23T19:00:00.000000"
     },
     {
       "id": 5,
       "email": "aimerged1@gmail.com",
       "signup_date": "2024-03-20",
-      "credits_used": 3395,
-      "credits_remaining": 6605,
-      "last_used": "2025-06-22T19:24:33.897075"
+      "credits_used": 0,
+      "credits_remaining": 31396,
+      "last_used": "2025-06-22T19:24:33.897075",
+      "plan_type": "starter",
+      "monthly_limit": 30000,
+      "is_paid": true,
+      "upgraded_date": "2025-06-23T19:00:00.000000"
     },
     {
       "id": 6,
       "email": "aimerged2@gmail.com",
       "signup_date": "2024-03-20",
       "credits_used": 5918,
-      "credits_remaining": 4082,
+      "credits_remaining": 111,
       "last_used": "2025-06-22T19:24:33.897075"
     },
     {
@@ -54,63 +70,7 @@
       "email": "itsnacho.tiktok@gmail.com",
       "signup_date": "2025-06-22",
       "credits_used": 0,
-      "credits_remaining": 10000,
-      "last_used": null
-    },
-    {
-      "id": 8,
-      "email": "modekax479@nab4.com",
-      "signup_date": "2025-06-22",
-      "credits_used": 0,
-      "credits_remaining": 10000,
-      "last_used": null
-    },
-    {
-      "id": 9,
-      "email": "sahab42167@nab4.com",
-      "signup_date": "2025-06-22",
-      "credits_used": 0,
-      "credits_remaining": 10000,
-      "last_used": null
-    },
-    {
-      "id": 10,
-      "email": "q22xq@punkproof.com",
-      "signup_date": "2025-06-22",
-      "credits_used": 0,
-      "credits_remaining": 10000,
-      "last_used": null
-    },
-    {
-      "id": 11,
-      "email": "p23ev@punkproof.com",
-      "signup_date": "2025-06-22",
-      "credits_used": 0,
-      "credits_remaining": 10000,
-      "last_used": null
-    },
-    {
-      "id": 12,
-      "email": "4eczx@punkproof.com",
-      "signup_date": "2025-06-22",
-      "credits_used": 0,
-      "credits_remaining": 10000,
-      "last_used": null
-    },
-    {
-      "id": 13,
-      "email": "c8eg4@punkproof.com",
-      "signup_date": "2025-06-22",
-      "credits_used": 0,
-      "credits_remaining": 10000,
-      "last_used": null
-    },
-    {
-      "id": 14,
-      "email": "q9h9i3v8lj@vwhins.com",
-      "signup_date": "2025-06-22",
-      "credits_used": 0,
-      "credits_remaining": 10000,
+      "credits_remaining": 7,
       "last_used": null
     }
   ]
