@@ -4,6 +4,7 @@ import { Select, SelectOption } from '../ui/select';
 import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { Zap } from 'lucide-react';
 
 export function AISettings() {
   const { preferences, updatePreference } = useSettingsStore();
@@ -22,30 +23,29 @@ export function AISettings() {
   ];
 
   const scriptLengthOptions: SelectOption[] = [
-    { value: 'short', label: 'Short (200-400 words)', description: '1-2 minute videos' },
-    { value: 'medium', label: 'Medium (400-800 words)', description: '3-5 minute videos' },
-    { value: 'long', label: 'Long (800-1500 words)', description: '5-10 minute videos' },
-    { value: 'custom', label: 'Custom Length', description: 'Specify exact word count' }
+    { value: 'short', label: 'Short (1-3 min)', description: 'Quick, concise content' },
+    { value: 'medium', label: 'Medium (3-7 min)', description: 'Balanced depth and brevity' },
+    { value: 'long', label: 'Long (7-15 min)', description: 'Comprehensive, detailed content' }
   ];
 
   return (
     <div className="space-y-6">
       <Select
-        label="Preferred AI Model"
+        label="AI Model"
         value={preferences.preferredAIModel}
         onValueChange={(value) => updatePreference('preferredAIModel', value as any)}
         options={aiModelOptions}
       />
       
       <Select
-        label="Default Prompt Style"
+        label="Prompt Style"
         value={preferences.defaultPromptStyle}
         onValueChange={(value) => updatePreference('defaultPromptStyle', value as any)}
         options={promptStyleOptions}
       />
       
       <Select
-        label="Script Length Preference"
+        label="Default Script Length"
         value={preferences.scriptLengthPreference}
         onValueChange={(value) => updatePreference('scriptLengthPreference', value as any)}
         options={scriptLengthOptions}
@@ -63,14 +63,12 @@ export function AISettings() {
         />
       )}
       
-      <div className="space-y-2">
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <label className="text-sm font-medium text-foreground">
-              Skip Character Extraction
-            </label>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Skip Character Extraction</label>
             <p className="text-xs text-muted-foreground">
-              Use predefined characters instead of AI analysis to save OpenAI quota
+              Use predefined characters instead of AI analysis for faster processing
             </p>
           </div>
           <Switch
@@ -78,10 +76,16 @@ export function AISettings() {
             onCheckedChange={(checked) => updatePreference('skipCharacterExtraction', checked)}
           />
         </div>
+        
         {preferences.skipCharacterExtraction && (
-          <p className="text-xs text-amber-600 dark:text-amber-400">
-            [FAST] Using predefined characters: Steven Seagal, Jean-Claude Van Damme
-          </p>
+          <div className="mt-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
+              <Zap className="h-4 w-4" />
+              <span className="text-sm font-medium">
+                Using predefined characters: Steven Seagal, Jean-Claude Van Damme
+              </span>
+            </div>
+          </div>
         )}
       </div>
     </div>

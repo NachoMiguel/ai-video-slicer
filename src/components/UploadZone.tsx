@@ -1,6 +1,7 @@
 import { useDropzone } from 'react-dropzone'
 import { cn } from '../lib/utils'
 import { useState } from 'react'
+import { Video, AlertTriangle } from 'lucide-react'
 
 interface UploadZoneProps {
   onFilesAccepted: (files: File[]) => void
@@ -66,7 +67,9 @@ export function UploadZone({ onFilesAccepted, maxFiles = 2 }: UploadZoneProps) {
       >
         <input {...getInputProps()} />
         <div className="space-y-4">
-          <div className="text-4xl">[CAM]</div>
+          <div className="flex justify-center">
+            <Video className="h-16 w-16 text-blue-500" />
+          </div>
           <div className="space-y-2">
             <p className="text-xl font-semibold text-slate-800">
               {isDragActive
@@ -83,7 +86,7 @@ export function UploadZone({ onFilesAccepted, maxFiles = 2 }: UploadZoneProps) {
       {error && (
         <div className="rounded-xl bg-red-50 border border-red-200 p-4">
           <div className="flex items-center">
-            <div className="text-red-500 mr-3">[WARNING]</div>
+            <AlertTriangle className="h-5 w-5 text-red-500 mr-3" />
             <p className="text-sm font-medium text-red-800">{error}</p>
           </div>
         </div>

@@ -7,6 +7,7 @@ import { VideoPreview } from './VideoPreview'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { useSettingsStore } from '../stores/settingsStore'
+import { Bot, Wrench } from 'lucide-react'
 
 interface LegacyVideoProcessorProps {
   className?: string;
@@ -216,8 +217,8 @@ export function LegacyVideoProcessor({ className = '' }: LegacyVideoProcessorPro
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 max-h-64 overflow-y-auto">
-                    <pre className="text-sm whitespace-pre-wrap text-foreground">
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 max-h-64 overflow-y-auto overflow-x-hidden">
+                    <pre className="text-sm whitespace-pre-wrap text-foreground break-words word-wrap overflow-wrap-anywhere w-full">
                       {result.script}
                     </pre>
                   </div>
@@ -232,12 +233,22 @@ export function LegacyVideoProcessor({ className = '' }: LegacyVideoProcessorPro
                 <CardTitle className="text-2xl font-semibold text-card-foreground">Video Preview</CardTitle>
                 {result.assemblyType && (
                   <div className="flex items-center gap-2 mt-2">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
                       result.assemblyType === 'advanced' 
                         ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
                         : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
                     }`}>
-                      {result.assemblyType === 'advanced' ? '[AI] Advanced Assembly' : '[TOOL] Simple Assembly'}
+                      {result.assemblyType === 'advanced' ? (
+                        <>
+                          <Bot className="h-3 w-3" />
+                          Advanced Assembly
+                        </>
+                      ) : (
+                        <>
+                          <Wrench className="h-3 w-3" />
+                          Simple Assembly
+                        </>
+                      )}
                     </span>
                   </div>
                 )}

@@ -257,10 +257,60 @@
         "final_word_count": 2033,
         "final_char_count": 11734
       }
+    },
+    {
+      "id": "a3b02308-20a9-4a76-80c8-defb0aaa469b",
+      "type": "system",
+      "content": "Script finalized successfully! Total length: 11734 characters (2033 words)",
+      "timestamp": "2025-06-25T17:58:02.167571",
+      "metadata": {
+        "final_word_count": 2033,
+        "final_char_count": 11734
+      }
+    },
+    {
+      "id": "d6ab50f8-eefc-4de5-8f70-30ecdf272520",
+      "type": "system",
+      "content": "Script finalized successfully! Total length: 11734 characters (2033 words)",
+      "timestamp": "2025-06-25T18:40:11.908244",
+      "metadata": {
+        "final_word_count": 2033,
+        "final_char_count": 11734
+      }
+    },
+    {
+      "id": "ef7c06ee-ea56-4c92-87bb-bc1c049d326c",
+      "type": "system",
+      "content": "Script finalized successfully! Total length: 11734 characters (2033 words)",
+      "timestamp": "2025-06-25T23:41:30.199584",
+      "metadata": {
+        "final_word_count": 2033,
+        "final_char_count": 11734
+      }
+    },
+    {
+      "id": "99b70be6-6086-41db-86bc-dfdec0fde87f",
+      "type": "system",
+      "content": "Script finalized successfully! Total length: 11734 characters (2033 words)",
+      "timestamp": "2025-06-26T10:21:40.926722",
+      "metadata": {
+        "final_word_count": 2033,
+        "final_char_count": 11734
+      }
+    },
+    {
+      "id": "cc0c5e3f-b758-4c24-8919-683556f4fc1c",
+      "type": "system",
+      "content": "Script finalized successfully! Total length: 11734 characters (2033 words)",
+      "timestamp": "2025-06-26T17:49:41.716936",
+      "metadata": {
+        "final_word_count": 2033,
+        "final_char_count": 11734
+      }
     }
   ],
   "is_finalized": true,
   "title": "Script: At 64, Jean-Claude Van Damme FINALLY Confirms The Truth On Steven Seagal",
-  "created_at": "2025-06-24T18:51:44.924466",
-  "updated_at": "2025-06-24T18:51:44.924466"
+  "created_at": "2025-06-26T17:49:41.725660",
+  "updated_at": "2025-06-26T17:49:41.725660"
 }

@@ -7,6 +7,13 @@ import requests
 import ffmpeg
 import logging
 
+# Import Unicode-safe logging
+try:
+    from unicode_safe_logger import safe_print
+except ImportError:
+    # When being imported from parent directory
+    from backend.unicode_safe_logger import safe_print
+
 class ElevenLabsAccountManager:
     def __init__(self, json_path='backend/elevenlabs_accounts.json', env_path='.env'):
         load_dotenv(env_path)

@@ -2,6 +2,10 @@
 """Detailed test to demonstrate paid account prioritization"""
 
 from elevenlabs_account_manager import ElevenLabsAccountManager
+try:
+    from unicode_safe_logger import safe_print
+except ImportError:
+    from backend.unicode_safe_logger import safe_print
 
 def main():
     safe_print("[?] DETAILED PAID ACCOUNT PRIORITIZATION TEST")

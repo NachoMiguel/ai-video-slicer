@@ -11,7 +11,7 @@ import { SettingsPanel } from '../components/settings'
 import { ThemeToggle } from '../components/theme-toggle'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
-import { ArrowLeft, Sparkles, Video, FileText, Settings, Youtube } from 'lucide-react'
+import { ArrowLeft, Sparkles, Video, FileText, Settings, Youtube, Zap, Bot, CheckCircle, Wrench } from 'lucide-react'
 import { useSettingsStore } from '../stores/settingsStore'
 
 type WorkflowStep = 'welcome' | 'script-building' | 'video-upload' | 'processing' | 'results' | 'settings'
@@ -322,8 +322,8 @@ export default function Home() {
               </div>
             </div>
             
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 max-h-64 overflow-y-auto">
-              <pre className="text-sm whitespace-pre-wrap text-foreground">
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 max-h-64 overflow-y-auto overflow-x-hidden">
+              <pre className="text-sm whitespace-pre-wrap text-foreground break-words word-wrap overflow-wrap-anywhere w-full">
                 {finalizedSession?.currentScript?.substring(0, 500) || 'No script content'}
                 {(finalizedSession?.currentScript?.length || 0) > 500 && '...'}
               </pre>
@@ -464,7 +464,7 @@ export default function Home() {
                     <div className="flex items-center justify-between p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
                       <div className="flex items-center gap-3">
                         <div className="text-amber-600 dark:text-amber-400 text-lg">
-                          {preferences.skipCharacterExtraction ? '[FAST]' : '[AI]'}
+                          {preferences.skipCharacterExtraction ? <Zap className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                         </div>
                         <div>
                           <div className="text-sm font-medium text-amber-800 dark:text-amber-200">
@@ -581,14 +581,17 @@ export default function Home() {
   const renderResults = () => (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <h2 className="text-3xl font-bold text-foreground">Your Video is Ready! [DONE]</h2>
-        <p className="text-muted-foreground">
-          AI has successfully assembled your video based on your script. Review and download below.
-        </p>
-        <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 max-w-2xl mx-auto">
-          <p className="text-sm text-blue-700 dark:text-blue-300">
-            [FOLDER] <strong>For Testing:</strong> Your video has also been automatically saved to your Downloads folder for easy access!
+      <div className="text-center space-y-6">
+        <div className="flex justify-center">
+          <CheckCircle className="h-16 w-16 text-green-500" />
+        </div>
+        <h2 className="text-3xl font-bold text-foreground">Your Video is Ready!</h2>
+        <div className="space-y-4 text-left bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+          <p className="text-blue-800 dark:text-blue-200">
+            <strong>For Testing:</strong> Your video has also been automatically saved to your Downloads folder for easy access!
+          </p>
+          <p className="text-xs text-blue-600 dark:text-blue-400">
+            This helps you quickly test and review the output without needing to download from the browser.
           </p>
         </div>
       </div>
@@ -601,8 +604,8 @@ export default function Home() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 max-h-64 overflow-y-auto">
-                <pre className="text-sm whitespace-pre-wrap text-foreground">
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 max-h-64 overflow-y-auto overflow-x-hidden">
+                <pre className="text-sm whitespace-pre-wrap text-foreground break-words word-wrap overflow-wrap-anywhere w-full">
                   {result?.script || 'No script available'}
                 </pre>
               </div>
@@ -619,12 +622,22 @@ export default function Home() {
             <CardTitle className="text-xl font-semibold">Generated Video</CardTitle>
             {result?.assemblyType && (
               <div className="flex items-center gap-2 mt-2">
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                <span className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
                   result.assemblyType === 'advanced' 
                     ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
                     : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
                 }`}>
-                  {result.assemblyType === 'advanced' ? '[AI] Advanced Assembly' : '[TOOL] Simple Assembly'}
+                  {result.assemblyType === 'advanced' ? (
+                    <>
+                      <Bot className="h-3 w-3" />
+                      Advanced Assembly
+                    </>
+                  ) : (
+                    <>
+                      <Wrench className="h-3 w-3" />
+                      Simple Assembly
+                    </>
+                  )}
                 </span>
               </div>
             )}
@@ -670,8 +683,6 @@ export default function Home() {
       </div>
     </div>
   )
-
-
 
   const renderSettings = () => (
     <SettingsPanel 

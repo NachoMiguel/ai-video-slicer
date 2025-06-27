@@ -11,6 +11,10 @@ from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from elevenlabs_account_manager import ElevenLabsAccountManager
+try:
+    from unicode_safe_logger import safe_print
+except ImportError:
+    from backend.unicode_safe_logger import safe_print
 
 def test_prioritization():
     """Test that paid accounts are prioritized over free accounts"""

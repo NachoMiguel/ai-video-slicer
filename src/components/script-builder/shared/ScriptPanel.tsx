@@ -693,20 +693,20 @@ export function ScriptPanel({
               <div className="h-full w-full overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-600 dark:scrollbar-track-gray-800 hover:scrollbar-thumb-gray-400 dark:hover:scrollbar-thumb-gray-500">
                 <div 
                   ref={scriptRef}
-                  className="w-full px-6 py-4"
+                  className="w-full px-6 py-4 min-w-0 max-w-full"
                   onMouseUp={handleTextSelection}
                   style={{ userSelect: isModificationMode ? 'text' : 'auto' }}
                 >
-                  <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground bg-transparent border-none p-0 cursor-text w-full break-words">
+                  <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground bg-transparent border-none p-0 cursor-text w-full break-words word-wrap overflow-wrap-anywhere max-w-full">
                     {script}
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="h-full w-full overflow-y-auto overflow-x-hidden px-6 py-4">
+              <div className="h-full w-full overflow-y-auto overflow-x-hidden px-6 py-4 min-w-0 max-w-full">
                 {bulletPoints && bulletPoints.length > 0 ? (
-                  <div className="w-full">
-                    <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground bg-transparent border-none p-0 w-full break-words">
+                  <div className="w-full min-w-0 max-w-full">
+                    <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground bg-transparent border-none p-0 w-full break-words word-wrap overflow-wrap-anywhere max-w-full">
                       {bulletPoints.map((point: any, index: number) => 
                         `${index + 1}. ${point.title}\n${point.description}\n\n`
                       ).join('')}

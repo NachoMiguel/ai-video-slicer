@@ -18,6 +18,20 @@ import whisper
 from dotenv import load_dotenv
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
+
+# Import Unicode-safe logging first (before other imports that might fail)
+try:
+    from unicode_safe_logger import safe_print, log_success, log_error, log_warning, log_info, setup_unicode_safe_logging
+except ImportError:
+    # Fallback functions if unicode_safe_logger is not available
+    def safe_print(*args, **kwargs):
+        print(*args, **kwargs)
+    def log_success(msg): print(f"[SUCCESS] {msg}")
+    def log_error(msg): print(f"[ERROR] {msg}")
+    def log_warning(msg): print(f"[WARNING] {msg}")
+    def log_info(msg): print(f"[INFO] {msg}")
+    def setup_unicode_safe_logging(): pass
+
 try:
     import face_recognition
     FACE_RECOGNITION_AVAILABLE = True
@@ -64,18 +78,7 @@ except ImportError:
         update_accounts_usage_from_dict
     )
 
-# Import Unicode-safe logging
-try:
-    from unicode_safe_logger import safe_print, log_success, log_error, log_warning, log_info, setup_unicode_safe_logging
-except ImportError:
-    # Fallback functions if unicode_safe_logger is not available
-    def safe_print(*args, **kwargs):
-        print(*args, **kwargs)
-    def log_success(msg): print(f"[SUCCESS] {msg}")
-    def log_error(msg): print(f"[ERROR] {msg}")
-    def log_warning(msg): print(f"[WARNING] {msg}")
-    def log_info(msg): print(f"[INFO] {msg}")
-    def setup_unicode_safe_logging(): pass
+
 
 # Import Critical Failure Monitor
 try:
@@ -2888,12 +2891,13 @@ def determine_assembly_feasibility(avg_quality: float, total_coverage: float) ->
 # PHASE D: Intelligent Video Assembly
 # ========================================
 
-def extract_video_segments(video_path: str, assembly_plan: List[Dict], output_dir: str) -> Dict[str, Dict]:
+def extract_video_segments(video_paths: List[str], assembly_plan: List[Dict], output_dir: str) -> Dict[str, Dict]:
     """
-    D1: Extract precise video segments based on assembly plan recommendations.
+    D1: Extract precise video segments from multiple videos based on assembly plan recommendations.
+    Enhanced with multi-video support, cleanup management and better error handling.
     
     Args:
-        video_path: Path to source video file
+        video_paths: List of paths to source video files
         assembly_plan: Assembly plan from Phase C recommendations
         output_dir: Directory to save extracted segments
         
@@ -2902,19 +2906,47 @@ def extract_video_segments(video_path: str, assembly_plan: List[Dict], output_di
     """
     try:
         from moviepy.editor import VideoFileClip
+        from cleanup_manager import get_cleanup_manager
         import os
+        import random
         
-        safe_print(f"[VIDEO] Extracting video segments from {video_path}...")
+        safe_print(f"[VIDEO] Extracting video segments from {len(video_paths)} videos...")
         
-        # Create output directory
-        os.makedirs(output_dir, exist_ok=True)
+        # Get cleanup manager
+        cleanup_manager = get_cleanup_manager()
+        
+        # Use temporary directory if output_dir is current directory or default
+        if output_dir in [".", "segments"]:
+            output_dir = cleanup_manager.create_temp_dir("video_segments_")
+            safe_print(f"[VIDEO] Using temporary directory: {output_dir}")
+        else:
+            os.makedirs(output_dir, exist_ok=True)
         
         extracted_segments = {}
+        successful_extractions = 0
         
-        # Load source video
-        with VideoFileClip(video_path) as video_clip:
-            video_duration = video_clip.duration
-            
+        # Load all video clips and get their durations
+        video_clips = []
+        video_durations = []
+        
+        for video_path in video_paths:
+            try:
+                video_clip = VideoFileClip(video_path)
+                video_clips.append(video_clip)
+                video_durations.append(video_clip.duration)
+                safe_print(f"[VIDEO] Loaded {os.path.basename(video_path)}: {video_clip.duration:.1f}s")
+            except Exception as e:
+                safe_print(f"[ERROR] Failed to load video {video_path}: {e}")
+                continue
+        
+        if not video_clips:
+            safe_print("[ERROR] No videos could be loaded!")
+            return {}
+        
+        safe_print(f"[VIDEO] Successfully loaded {len(video_clips)} videos")
+        
+        try:
+            # Process each segment in the assembly plan
             for i, plan_entry in enumerate(assembly_plan):
                 segment_id = f"segment_{i}"
                 script_scene_id = plan_entry.get('script_scene_id', f'scene_{i}')
@@ -2924,81 +2956,166 @@ def extract_video_segments(video_path: str, assembly_plan: List[Dict], output_di
                     safe_print(f"  [WARNING] No video scene recommended for {script_scene_id}")
                     continue
                 
-                # Extract timing information
+                # Intelligent video selection based on the assembly plan
+                # Try to use the recommended video scene information if available
+                target_video_idx = 0  # Default to first video
+                
+                # If the assembly plan has video-specific information, use it
+                if 'source_video_path' in plan_entry:
+                    source_video = plan_entry['source_video_path']
+                    for idx, video_path in enumerate(video_paths):
+                        if os.path.basename(video_path) == os.path.basename(source_video):
+                            target_video_idx = idx
+                            break
+                elif 'video_index' in plan_entry:
+                    target_video_idx = min(plan_entry['video_index'], len(video_clips) - 1)
+                else:
+                    # Distribute segments across videos for variety
+                    target_video_idx = i % len(video_clips)
+                
+                video_clip = video_clips[target_video_idx]
+                video_duration = video_durations[target_video_idx]
+                video_name = os.path.basename(video_paths[target_video_idx])
+                
+                # Extract timing information with better defaults
                 script_duration = plan_entry.get('duration_estimate', 30.0)
                 
-                # Calculate extraction window (simplified approach)
-                segment_start = min(i * 20.0, video_duration - script_duration)
-                segment_end = min(segment_start + script_duration, video_duration)
+                # Improved timing calculation - use scene-specific timing if available
+                if 'start_time' in plan_entry and 'end_time' in plan_entry:
+                    segment_start = plan_entry['start_time']
+                    segment_end = plan_entry['end_time']
+                else:
+                    # Fallback to distributed timing within the selected video
+                    max_start = max(0, video_duration - script_duration)
+                    segment_start = min(random.uniform(0, max_start), video_duration - script_duration) if max_start > 0 else 0
+                    segment_end = min(segment_start + script_duration, video_duration)
                 
+                # Validate timing
                 if segment_start >= video_duration:
-                    safe_print(f"  [WARNING] Segment {segment_id} exceeds video duration")
+                    safe_print(f"  [WARNING] Segment {segment_id} exceeds video duration for {video_name}")
                     continue
                 
+                if segment_end <= segment_start:
+                    safe_print(f"  [WARNING] Invalid timing for {segment_id}: {segment_start:.1f}s-{segment_end:.1f}s")
+                    continue
+                
+                # Ensure minimum segment duration
+                min_duration = 2.0  # Minimum 2 seconds
+                if (segment_end - segment_start) < min_duration:
+                    segment_end = min(segment_start + min_duration, video_duration)
+                    safe_print(f"  [INFO] Adjusted {segment_id} to minimum duration: {segment_start:.1f}s-{segment_end:.1f}s")
+                
                 # Extract segment
-                output_path = os.path.join(output_dir, f"{segment_id}.mp4")
+                output_path = os.path.join(output_dir, f"{segment_id}_from_{video_name}.mp4")
                 
                 try:
                     segment_clip = video_clip.subclip(segment_start, segment_end)
                     
-                    # Apply basic quality optimization and aspect ratio normalization
-                    clip_width, clip_height = segment_clip.size
+                    # Validate the clip
+                    if segment_clip.duration < 0.5:
+                        raise Exception(f"Segment too short: {segment_clip.duration:.1f}s")
                     
-                    # Normalize to standard resolutions while maintaining aspect ratio
-                    if clip_height > 1080:
-                        # Scale down to 1080p height while maintaining aspect ratio
-                        scale_factor = 1080 / clip_height
-                        new_width = int(clip_width * scale_factor)
-                        segment_clip = segment_clip.resize((new_width, 1080))
-                        safe_print(f"    [RESIZE] Scaled segment to {new_width}x1080")
-                    elif clip_width > 1920:
-                        # Scale down to 1920p width while maintaining aspect ratio  
-                        scale_factor = 1920 / clip_width
-                        new_height = int(clip_height * scale_factor)
-                        segment_clip = segment_clip.resize((1920, new_height))
-                        safe_print(f"    [RESIZE] Scaled segment to 1920x{new_height}")
+                    # Apply basic quality optimization
+                    if segment_clip.size[1] > 1080:
+                        segment_clip = segment_clip.resize(height=1080)
                     
-                    # Write segment
+                    # Write segment with better error handling
                     segment_clip.write_videofile(
                         output_path,
                         codec='libx264',
                         audio_codec='aac',
                         verbose=False,
-                        logger=None
+                        logger=None,
+                        temp_audiofile=None,  # Prevent temp audio files
+                        remove_temp=True      # Clean up temp files
                     )
                     
                     segment_clip.close()
                     
-                    # Calculate quality score
-                    quality_score = min(1.0, (segment_end - segment_start) / 30.0) * 0.8 + 0.2
+                    # Verify the output file
+                    if not os.path.exists(output_path):
+                        raise Exception(f"Output file not created: {output_path}")
+                    
+                    file_size = os.path.getsize(output_path)
+                    if file_size < 1024:  # Less than 1KB indicates failure
+                        raise Exception(f"Output file too small: {file_size} bytes")
+                    
+                    # Track the segment file for cleanup
+                    cleanup_manager.track_segment_file(output_path)
+                    
+                    # Calculate quality score with file size factor
+                    duration_factor = min(1.0, (segment_end - segment_start) / 30.0)
+                    size_factor = min(1.0, file_size / (1024 * 1024))  # MB factor
+                    quality_score = (duration_factor * 0.7 + size_factor * 0.3) * 0.8 + 0.2
                     
                     extracted_segments[segment_id] = {
                         'source_scene_id': recommended_scene,
                         'script_scene_id': script_scene_id,
+                        'source_video_path': video_paths[target_video_idx],
+                        'source_video_name': video_name,
+                        'video_index': target_video_idx,
                         'start_time': segment_start,
                         'end_time': segment_end,
                         'duration': segment_end - segment_start,
                         'output_path': output_path,
+                        'file_size': file_size,
                         'quality_score': quality_score,
                         'extraction_status': 'success'
                     }
                     
-                    safe_print(f"  [SUCCESS] Extracted {segment_id}: {segment_start:.1f}s-{segment_end:.1f}s")
+                    successful_extractions += 1
+                    safe_print(f"  [SUCCESS] Extracted {segment_id} from {video_name}: {segment_start:.1f}s-{segment_end:.1f}s ({file_size/1024:.1f}KB)")
                     
                 except Exception as e:
-                    safe_print(f"  [ERROR] Failed to extract {segment_id}: {e}")
+                    safe_print(f"  [ERROR] Failed to extract {segment_id} from {video_name}: {e}")
+                    
+                    # Clean up failed output file
+                    if os.path.exists(output_path):
+                        try:
+                            os.remove(output_path)
+                        except:
+                            pass
+                    
                     extracted_segments[segment_id] = {
                         'source_scene_id': recommended_scene,
                         'script_scene_id': script_scene_id,
+                        'source_video_path': video_paths[target_video_idx],
+                        'source_video_name': video_name,
+                        'video_index': target_video_idx,
                         'start_time': segment_start,
                         'end_time': segment_end,
                         'duration': 0,
                         'output_path': None,
+                        'file_size': 0,
                         'quality_score': 0.0,
-                        'extraction_status': 'failed'
+                        'extraction_status': 'failed',
+                        'error': str(e)
                     }
         
-        safe_print(f"[SUCCESS] Video segment extraction complete: {len(extracted_segments)} segments")
+        finally:
+            # Clean up video clips
+            for video_clip in video_clips:
+                try:
+                    video_clip.close()
+                except:
+                    pass
+        
+        success_rate = (successful_extractions / len(assembly_plan)) * 100 if assembly_plan else 0
+        safe_print(f"[SUCCESS] Multi-video segment extraction complete: {successful_extractions}/{len(assembly_plan)} segments ({success_rate:.1f}% success rate)")
+        
+        # Log which videos were used
+        video_usage = {}
+        for segment in extracted_segments.values():
+            if segment['extraction_status'] == 'success':
+                video_name = segment.get('source_video_name', 'unknown')
+                video_usage[video_name] = video_usage.get(video_name, 0) + 1
+        
+        for video_name, count in video_usage.items():
+            safe_print(f"  [USAGE] {video_name}: {count} segments extracted")
+        
+        if successful_extractions == 0:
+            safe_print("[WARNING] No segments were successfully extracted!")
+        
         return extracted_segments
         
     except Exception as e:
@@ -3081,7 +3198,7 @@ def assemble_final_video(segments: Dict[str, Dict], transitions: List[Dict], out
     If audio_file is provided, use it as the audio track for the final video.
     """
     try:
-        from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip, ColorClip, CompositeVideoClip
+        from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip
         import os
         
         safe_print(f"[VIDEO] Assembling final video: {output_path}")
@@ -3114,66 +3231,9 @@ def assemble_final_video(segments: Dict[str, Dict], transitions: List[Dict], out
             
             video_clips = enhanced_clips
         
-        # Normalize aspect ratios before concatenation
-        safe_print("[ASPECT] Normalizing video aspect ratios...")
-        
-        # Find the most common resolution or use a standard resolution
-        resolutions = [clip.size for clip in video_clips]
-        target_width = max(res[0] for res in resolutions)  # Use highest width
-        target_height = max(res[1] for res in resolutions)  # Use highest height
-        
-        # Ensure minimum standard resolution
-        target_width = max(target_width, 1920)  # Minimum 1080p width
-        target_height = max(target_height, 1080)  # Minimum 1080p height
-        
-        safe_print(f"[ASPECT] Target resolution: {target_width}x{target_height}")
-        
-        # Resize all clips to the same resolution with proper aspect ratio handling
-        normalized_clips = []
-        for i, clip in enumerate(video_clips):
-            try:
-                # Calculate scaling to fit within target resolution while maintaining aspect ratio
-                clip_width, clip_height = clip.size
-                width_ratio = target_width / clip_width
-                height_ratio = target_height / clip_height
-                scale_ratio = min(width_ratio, height_ratio)  # Fit within bounds
-                
-                # Calculate new dimensions
-                new_width = int(clip_width * scale_ratio)
-                new_height = int(clip_height * scale_ratio)
-                
-                # Resize the clip
-                resized_clip = clip.resize((new_width, new_height))
-                
-                # Add padding if needed to reach exact target resolution
-                if new_width != target_width or new_height != target_height:
-                    # Center the video with black padding
-                    
-                    # Create black background
-                    background = ColorClip(size=(target_width, target_height), color=(0,0,0), duration=resized_clip.duration)
-                    
-                    # Center the resized clip
-                    x_offset = (target_width - new_width) // 2
-                    y_offset = (target_height - new_height) // 2
-                    
-                    # Composite the clip onto the background
-                    normalized_clip = CompositeVideoClip([
-                        background,
-                        resized_clip.set_position((x_offset, y_offset))
-                    ], size=(target_width, target_height))
-                else:
-                    normalized_clip = resized_clip
-                
-                normalized_clips.append(normalized_clip)
-                safe_print(f"  [SUCCESS] Normalized clip {i+1}: {clip_width}x{clip_height} -> {target_width}x{target_height}")
-                
-            except Exception as e:
-                safe_print(f"  [WARNING] Failed to normalize clip {i+1}, using original: {e}")
-                normalized_clips.append(clip)
-        
-        # Concatenate all normalized clips
-        safe_print("[CONCAT] Concatenating normalized video segments...")
-        final_video = concatenate_videoclips(normalized_clips, method="compose")
+        # Concatenate all clips
+        safe_print("[CONCAT] Concatenating video segments...")
+        final_video = concatenate_videoclips(video_clips, method="compose")
         
         # If audio_file is provided, set it as the audio track
         if audio_file and os.path.exists(audio_file):
@@ -3200,15 +3260,6 @@ def assemble_final_video(segments: Dict[str, Dict], transitions: List[Dict], out
         # Cleanup
         for clip in video_clips:
             clip.close()
-        
-        # Cleanup normalized clips if they exist
-        if 'normalized_clips' in locals():
-            for clip in normalized_clips:
-                try:
-                    clip.close()
-                except:
-                    pass
-        
         final_video.close()
         if audio_file and os.path.exists(audio_file):
             final_audio.close()
@@ -3353,6 +3404,227 @@ def generate_video_metadata(assembly_result: Dict, assembly_plan: List[Dict],
     except Exception as e:
         safe_print(f"Error generating video metadata: {e}")
         return {'error': str(e)}
+
+# ========================================
+# PERFORMANCE OPTIMIZATION FUNCTIONS
+# ========================================
+
+# Global face detection cache for performance
+FACE_DETECTION_CACHE = {}
+
+def cached_face_detection(image_path: str, face_registry_hash: str):
+    """
+    Cache face detection results to avoid reprocessing the same images.
+    
+    Args:
+        image_path: Path to the image file
+        face_registry_hash: Hash of the face registry for cache key uniqueness
+        
+    Returns:
+        Cached face detection result or None if not cached
+    """
+    try:
+        cache_key = f"{image_path}_{face_registry_hash}"
+        if cache_key in FACE_DETECTION_CACHE:
+            safe_print(f"[CACHE] Using cached face detection for {os.path.basename(image_path)}")
+            return FACE_DETECTION_CACHE[cache_key]
+        
+        # If not cached, detect and cache the result
+        result = detect_faces_in_image(image_path)
+        FACE_DETECTION_CACHE[cache_key] = result
+        safe_print(f"[CACHE] Cached face detection for {os.path.basename(image_path)}")
+        return result
+        
+    except Exception as e:
+        safe_print(f"[CACHE] Error in cached face detection: {e}")
+        # Fallback to regular detection
+        return detect_faces_in_image(image_path)
+
+class VideoClipManager:
+    """
+    Manage video clips with automatic cleanup and memory optimization.
+    Prevents memory leaks by maintaining a pool of video clips.
+    """
+    def __init__(self, max_clips=5):
+        self.clips = {}
+        self.max_clips = max_clips
+        self.access_order = []
+    
+    def get_clip(self, video_path: str):
+        """
+        Get a video clip, loading it if necessary and managing memory.
+        
+        Args:
+            video_path: Path to the video file
+            
+        Returns:
+            VideoFileClip object
+        """
+        try:
+            if video_path in self.clips:
+                # Move to end of access order (most recently used)
+                self.access_order.remove(video_path)
+                self.access_order.append(video_path)
+                return self.clips[video_path]
+            
+            # If we've reached max clips, remove the least recently used
+            if len(self.clips) >= self.max_clips:
+                lru_path = self.access_order.pop(0)
+                old_clip = self.clips.pop(lru_path)
+                try:
+                    old_clip.close()
+                    safe_print(f"[MEMORY] Closed LRU video clip: {os.path.basename(lru_path)}")
+                except:
+                    pass
+            
+            # Load new clip
+            from moviepy.editor import VideoFileClip
+            clip = VideoFileClip(video_path)
+            self.clips[video_path] = clip
+            self.access_order.append(video_path)
+            safe_print(f"[MEMORY] Loaded video clip: {os.path.basename(video_path)}")
+            return clip
+            
+        except Exception as e:
+            safe_print(f"[ERROR] Failed to get video clip {video_path}: {e}")
+            raise
+    
+    def cleanup_all(self):
+        """Clean up all managed video clips"""
+        cleaned_count = 0
+        for video_path, clip in self.clips.items():
+            try:
+                clip.close()
+                cleaned_count += 1
+                safe_print(f"[MEMORY] Cleaned up clip: {os.path.basename(video_path)}")
+            except:
+                pass
+        
+        self.clips.clear()
+        self.access_order.clear()
+        safe_print(f"[MEMORY] Cleaned up {cleaned_count} video clips")
+        return cleaned_count
+
+# Global video clip manager instance
+_global_clip_manager = None
+
+def get_video_clip_manager() -> VideoClipManager:
+    """Get the global video clip manager instance"""
+    global _global_clip_manager
+    if _global_clip_manager is None:
+        _global_clip_manager = VideoClipManager()
+    return _global_clip_manager
+
+async def process_videos_parallel(video_paths: List[str], scene_timestamps_list: List, frames_per_scene: int):
+    """
+    Process multiple videos in parallel for Phase B optimization.
+    
+    Args:
+        video_paths: List of video file paths
+        scene_timestamps_list: List of scene timestamps for each video
+        frames_per_scene: Number of frames to extract per scene
+        
+    Returns:
+        List of results from parallel processing
+    """
+    try:
+        import asyncio
+        import concurrent.futures
+        
+        loop = asyncio.get_event_loop()
+        
+        # Limit concurrent workers to avoid overwhelming the system
+        max_workers = min(3, len(video_paths), os.cpu_count() or 2)
+        safe_print(f"[PARALLEL] Processing {len(video_paths)} videos with {max_workers} workers")
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            tasks = []
+            
+            for video_path, scene_timestamps in zip(video_paths, scene_timestamps_list):
+                if scene_timestamps:  # Only process if there are scenes
+                    task = loop.run_in_executor(
+                        executor,
+                        extract_scene_frames,
+                        video_path,
+                        scene_timestamps,
+                        frames_per_scene
+                    )
+                    tasks.append((video_path, task))
+            
+            # Wait for all tasks to complete
+            results = {}
+            for video_path, task in tasks:
+                try:
+                    result = await task
+                    results[video_path] = result
+                    safe_print(f"[PARALLEL] Completed processing {os.path.basename(video_path)}")
+                except Exception as e:
+                    safe_print(f"[PARALLEL] Failed processing {os.path.basename(video_path)}: {e}")
+                    results[video_path] = None
+            
+            safe_print(f"[PARALLEL] Parallel processing complete: {len(results)} results")
+            return results
+            
+    except Exception as e:
+        safe_print(f"[PARALLEL] Parallel processing failed: {e}")
+        raise
+
+def clear_performance_caches():
+    """Clear all performance caches to free memory"""
+    global FACE_DETECTION_CACHE, _global_clip_manager
+    
+    # Clear face detection cache
+    cache_size = len(FACE_DETECTION_CACHE)
+    FACE_DETECTION_CACHE.clear()
+    safe_print(f"[CACHE] Cleared {cache_size} face detection cache entries")
+    
+    # Clear video clip manager
+    if _global_clip_manager:
+        clip_count = _global_clip_manager.cleanup_all()
+        safe_print(f"[MEMORY] Cleared {clip_count} video clips from memory")
+    
+    # Force garbage collection
+    import gc
+    gc.collect()
+    safe_print("[MEMORY] Forced garbage collection")
+
+# Test endpoint for multi-video processing validation
+@app.post("/api/test/multi-video")
+async def test_multi_video_processing(videos: List[UploadFile] = File(...)):
+    """
+    Test endpoint to validate multi-video processing capability.
+    Returns information about received videos without full processing.
+    """
+    try:
+        video_info = []
+        for i, video in enumerate(videos):
+            info = {
+                "index": i,
+                "filename": video.filename,
+                "size_mb": round(video.size / (1024 * 1024), 2),
+                "content_type": video.content_type
+            }
+            video_info.append(info)
+        
+        return {
+            "status": "success",
+            "message": "Multi-video processing ready",
+            "videos_received": len(videos),
+            "video_details": video_info,
+            "total_size_mb": round(sum(v["size_mb"] for v in video_info), 2),
+            "performance_optimizations": {
+                "face_detection_cache": "enabled",
+                "video_clip_manager": "enabled",
+                "parallel_processing": "enabled"
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Test failed: {str(e)}",
+            "videos_received": 0
+        }
 
 # REMOVED: Automatic script generation endpoint - users create scripts interactively now
 
@@ -3603,7 +3875,7 @@ async def process_videos(
                             video_clip_manager = get_video_clip_manager()
                             safe_print("[MEMORY] Video clip manager initialized for memory optimization")
                             
-                            scene_frames = {}
+                                                        scene_frames = {}
                             scene_face_data = {}
                             
                             for video_path in video_paths:
@@ -3817,7 +4089,7 @@ async def process_videos(
                         "Phase D - Video Segment Extraction",
                         extract_video_segments,
                         timeout_seconds=ADVANCED_ASSEMBLY_CONFIG['timeouts']['phase_d_timeout'],
-                        video_paths=video_paths,  # Process ALL videos - FIXED!
+                        video_paths=video_paths,  # Process ALL videos
                         assembly_plan=assembly_plan,
                         output_dir=temp_dir
                     )
@@ -3905,16 +4177,24 @@ async def process_videos(
                         # Determine how to split the audio duration across video segments
                         if audio_duration and audio_duration > 0:
                             # Calculate proportional durations for each video based on audio length
-                            for segment_id, segment_data in segments.items():
-                                # Proportional allocation based on original video length
-                                proportion = segment_data['full_duration'] / total_video_duration
-                                allocated_duration = audio_duration * proportion
-                                
-                                # Don't exceed the original video duration
-                                final_duration = min(allocated_duration, segment_data['full_duration'])
-                                segment_data['duration'] = final_duration
-                                
-                                logger.info(f"[INFO] {segment_id}: {final_duration:.1f}s (from {segment_data['full_duration']:.1f}s)")
+                            if total_video_duration > 0:
+                                for segment_id, segment_data in segments.items():
+                                    # Proportional allocation based on original video length
+                                    proportion = segment_data['full_duration'] / total_video_duration
+                                    allocated_duration = audio_duration * proportion
+                                    
+                                    # Don't exceed the original video duration
+                                    final_duration = min(allocated_duration, segment_data['full_duration'])
+                                    segment_data['duration'] = final_duration
+                                    
+                                    logger.info(f"[INFO] {segment_id}: {final_duration:.1f}s (from {segment_data['full_duration']:.1f}s)")
+                            else:
+                                # Fallback: equal distribution if no valid video durations
+                                logger.warning("[WARNING] All videos have zero duration, using equal audio distribution")
+                                equal_duration = audio_duration / len(segments) if len(segments) > 0 else 0
+                                for segment_id, segment_data in segments.items():
+                                    segment_data['duration'] = equal_duration
+                                    logger.info(f"[INFO] {segment_id}: {equal_duration:.1f}s (equal distribution)")
                         else:
                             # Fallback: use full video durations
                             for segment_data in segments.values():
@@ -3927,6 +4207,16 @@ async def process_videos(
                         for segment_id, segment_data in segments.items():
                             try:
                                 logger.info(f"[INFO] Loading video clip: {segment_data['video_path']}")
+                                
+                                # Verify file exists and is readable
+                                if not os.path.exists(segment_data['video_path']):
+                                    logger.error(f"[ERROR] Video file does not exist: {segment_data['video_path']}")
+                                    continue
+                                
+                                if os.path.getsize(segment_data['video_path']) == 0:
+                                    logger.error(f"[ERROR] Video file is empty: {segment_data['video_path']}")
+                                    continue
+                                
                                 video_clip = VideoFileClip(segment_data['video_path'])
                                 
                                 if video_clip is None:
@@ -3934,8 +4224,14 @@ async def process_videos(
                                     continue
                                 
                                 # Validate clip has duration
-                                if not hasattr(video_clip, 'duration') or video_clip.duration is None:
+                                if not hasattr(video_clip, 'duration') or video_clip.duration is None or video_clip.duration <= 0:
                                     logger.error(f"[ERROR] Video clip has no duration: {segment_data['video_path']}")
+                                    video_clip.close()
+                                    continue
+                                
+                                # Validate clip has proper reader
+                                if not hasattr(video_clip, 'reader') or video_clip.reader is None:
+                                    logger.error(f"[ERROR] Video clip has no reader: {segment_data['video_path']}")
                                     video_clip.close()
                                     continue
                                 
@@ -3973,8 +4269,15 @@ async def process_videos(
                             if clip is not None and hasattr(clip, 'duration') and clip.duration > 0:
                                 try:
                                     # Enhanced clip validation with multiple frame tests
+                                    # First, ensure the clip has proper reader
+                                    if not hasattr(clip, 'reader') or clip.reader is None:
+                                        logger.error(f"[ERROR] Clip {i} has no reader")
+                                        failed_clips.append(i)
+                                        if clip: clip.close()
+                                        continue
+                                    
                                     test_frame = clip.get_frame(0)
-                                    if test_frame is not None and test_frame.size > 0:
+                                    if test_frame is not None and hasattr(test_frame, 'size') and test_frame.size > 0:
                                         # Additional validation: test middle frame
                                         mid_time = min(clip.duration / 2, clip.duration - 0.1)
                                         mid_frame = clip.get_frame(mid_time)
@@ -4002,7 +4305,7 @@ async def process_videos(
                             logger.info(f"[INFO] Attempting to replace {len(failed_clips)} failed clips with working alternatives")
                             
                             # Get available video files from uploaded videos
-                            available_videos = [video_file for video_file in video_files if os.path.exists(video_file)]
+                            available_videos = [video_file for video_file in video_paths if os.path.exists(video_file)]
                             
                             for failed_index in failed_clips:
                                 if len(available_videos) > 1:  # We have alternatives
@@ -4046,7 +4349,7 @@ async def process_videos(
                         if not valid_clips:
                             logger.warning(f"[WARNING] No valid clips found, attempting emergency fallback")
                             
-                            for video_file in video_files:
+                            for video_file in video_paths:
                                 if os.path.exists(video_file):
                                     try:
                                         emergency_clip = VideoFileClip(video_file)
@@ -4260,6 +4563,10 @@ async def process_videos(
             try:
                 await update_progress(request_id, "process_video", "Finalizing video...", 95.0)
                 
+                # Get cleanup manager for final cleanup
+                from cleanup_manager import get_cleanup_manager
+                cleanup_manager = get_cleanup_manager()
+                
                 # Read the final video file (from temp location for web response)
                 video_file_path = temp_output_path if os.path.exists(temp_output_path) else output_path
                 
@@ -4271,26 +4578,30 @@ async def process_videos(
                 if file_size == 0:
                     raise Exception(f"Final video file is empty: {video_file_path}")
                 
-                logger.info(f"[INFO] Reading final video file: {video_file_path} ({file_size/1024/1024:.1f}MB)")
+                logger.info(f"[INFO] Preparing final video file: {video_file_path} ({file_size/1024/1024:.1f}MB)")
                 
-                # Read video data with error handling
+                # Create a unique filename for download
+                download_filename = f"ai_video_{request_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+                download_path = os.path.join(".", download_filename)
+                
+                # Copy the video file to a downloadable location
+                import shutil
                 max_retries = 3
-                video_data = None
-                for read_attempt in range(max_retries):
+                for copy_attempt in range(max_retries):
                     try:
-                        with open(video_file_path, "rb") as f:
-                            video_data = f.read()
+                        shutil.copy2(video_file_path, download_path)
                         
-                        if len(video_data) == file_size:
-                            logger.info(f"[SUCCESS] Video data read successfully ({len(video_data)} bytes)")
+                        # Verify the copy was successful
+                        if os.path.exists(download_path) and os.path.getsize(download_path) == file_size:
+                            logger.info(f"[SUCCESS] Video copied for download: {download_path}")
                             break
                         else:
-                            raise Exception(f"Data size mismatch: expected {file_size}, got {len(video_data)}")
+                            raise Exception(f"Copy verification failed for {download_path}")
                             
                     except Exception as e:
-                        logger.warning(f"[WARNING] Video read attempt {read_attempt + 1} failed: {e}")
-                        if read_attempt == max_retries - 1:
-                            raise Exception(f"Failed to read video file after {max_retries} attempts: {e}")
+                        logger.warning(f"[WARNING] Video copy attempt {copy_attempt + 1} failed: {e}")
+                        if copy_attempt == max_retries - 1:
+                            raise Exception(f"Failed to copy video file after {max_retries} attempts: {e}")
                         time.sleep(0.5)  # Brief pause before retry
                 
                 # Calculate processing time
@@ -4312,23 +4623,42 @@ async def process_videos(
                 except UnicodeEncodeError:
                     logger.info(f"[COMPLETE] Video processing completed successfully in {processing_time:.2f}s")
                 logger.info(f"   Assembly type: {assembly_type}")
-                logger.info(f"   Final video size: {len(video_data)} bytes")
+                logger.info(f"   Final video size: {file_size} bytes")
                 logger.info(f"   Downloads location: {output_path}")
+                logger.info(f"   Download filename: {download_filename}")
+                
+                # PERFORMANCE OPTIMIZATION: Clear memory caches
+                try:
+                    clear_performance_caches()
+                    safe_print("[PERFORMANCE] Memory caches cleared after successful processing")
+                except Exception as cache_error:
+                    safe_print(f"[WARNING] Failed to clear performance caches: {cache_error}")
+                
+                # Create download URL
+                download_url = f"/api/download/{download_filename}"
                 
                 # Send completion notification
                 await send_completion_update(request_id, True, {
-                    "video_size": len(video_data),
+                    "video_size": file_size,
                     "duration": final_metadata.get("stats", {}).get("total_duration", 0),
                     "assembly_type": assembly_type,
                     "downloads_path": output_path,
-                    "filename": output_filename
+                    "filename": output_filename,
+                    "download_url": download_url,
+                    "download_filename": download_filename
                 })
+                
+                # Clean up temporary segment files after successful processing
+                cleanup_count = cleanup_manager.cleanup_segments()
+                safe_print(f"[CLEANUP] Cleaned up {cleanup_count} temporary segment files")
                 
                 return {
                     "status": "success",
                     "process_id": request_id,
                     "script": script,
-                    "data": video_data,  # Changed from video_data to data for frontend compatibility
+                    "download_url": download_url,  # Return download URL instead of binary data
+                    "download_filename": download_filename,
+                    "video_size": file_size,
                     "assembly_type": assembly_type,
                     "metadata": final_metadata,
                     "stats": assembly_stats
@@ -4336,7 +4666,20 @@ async def process_videos(
                 
             except Exception as e:
                 logger.error(f"[ERROR] Final processing failed: {e}")
-                raise HTTPException(status_code=500, detail="Failed to read final video")
+                safe_print(f"[CRITICAL ERROR] Final processing failed: {e}")
+                safe_print("[CRITICAL ERROR] This could cause credit waste - server should be monitored!")
+                
+                # Clean up on failure too
+                try:
+                    cleanup_count = cleanup_manager.cleanup_all()
+                    safe_print(f"[CLEANUP] Emergency cleanup completed: {cleanup_count} files removed")
+                    # Also clear performance caches on failure
+                    clear_performance_caches()
+                    safe_print("[PERFORMANCE] Memory caches cleared after failure")
+                except Exception as cleanup_error:
+                    safe_print(f"[CLEANUP] Emergency cleanup failed: {cleanup_error}")
+                
+                raise HTTPException(status_code=500, detail=f"Failed to finalize video: {str(e)}")
 
         return start_processing
 
@@ -4349,6 +4692,18 @@ async def process_videos(
         logger.error(f"[CRASH] Unexpected error in video processing (request {request_id}): {e}")
         logger.error(f"   Processing time before error: {processing_time:.2f}s")
         logger.error(f"   Traceback: {traceback.format_exc()}")
+        
+        # Emergency cleanup on unexpected errors
+        try:
+            from cleanup_manager import get_cleanup_manager
+            cleanup_manager = get_cleanup_manager()
+            cleanup_count = cleanup_manager.cleanup_all()
+            safe_print(f"[CLEANUP] Emergency cleanup after crash: {cleanup_count} files removed")
+            # Also clear performance caches after crash
+            clear_performance_caches()
+            safe_print("[PERFORMANCE] Memory caches cleared after crash")
+        except Exception as cleanup_error:
+            safe_print(f"[CLEANUP] Emergency cleanup failed after crash: {cleanup_error}")
         
         raise HTTPException(
             status_code=500,
@@ -6378,6 +6733,53 @@ async def start_process():
         "status": "ready",
         "message": "Process ID generated. Ready to start processing."
     }
+
+# Download endpoint for generated video files
+@app.get("/api/download/{filename}")
+async def download_video(filename: str):
+    """Download endpoint for generated video files"""
+    import os
+    from fastapi.responses import FileResponse
+    
+    # Security: Only allow downloading files from the current directory
+    # and ensure the filename doesn't contain path traversal attempts
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    # Look for the file in the current directory
+    file_path = os.path.join(".", filename)
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Return the file as a downloadable response
+    return FileResponse(
+        path=file_path,
+        media_type='video/mp4',
+        filename=filename,
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@app.post("/api/cleanup")
+async def cleanup_temporary_files():
+    """Manual cleanup endpoint for temporary files"""
+    try:
+        from cleanup_manager import cleanup_orphaned_files
+        
+        # Clean up orphaned files in current directory
+        orphaned_count = cleanup_orphaned_files()
+        
+        safe_print(f"[CLEANUP] Manual cleanup completed: {orphaned_count} orphaned files removed")
+        
+        return {
+            "status": "success",
+            "message": f"Cleanup completed successfully",
+            "files_removed": orphaned_count
+        }
+        
+    except Exception as e:
+        safe_print(f"[CLEANUP] Manual cleanup failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")
 
 # WebSocket endpoint for real-time progress updates
 @app.websocket("/ws/{process_id}")
