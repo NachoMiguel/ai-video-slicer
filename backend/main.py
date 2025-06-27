@@ -98,12 +98,20 @@ setup_unicode_safe_logging()
 # Setup critical failure monitoring for credit protection
 setup_critical_failure_monitoring()
 
-# Configure logging with Unicode support
+# Configure logging with Unicode support - Only keep last run
+from logging.handlers import RotatingFileHandler
+import os
+
+# Clear existing log at startup to only keep current run
+log_file = 'ai_video_slicer.log'
+if os.path.exists(log_file):
+    open(log_file, 'w').close()
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('ai_video_slicer.log', encoding='utf-8'),
+        logging.FileHandler(log_file, encoding='utf-8', mode='w'),  # 'w' mode overwrites file
         logging.StreamHandler()
     ]
 )
